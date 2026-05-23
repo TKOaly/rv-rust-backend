@@ -1,0 +1,2807 @@
+openapi: 3.0.0
+info:
+  version: '1.1'
+  title: Ruokavälitys API
+  description: API for both, managing the RV system and it's inventory, and browsing and purchasing products.
+
+externalDocs:
+  url: https://github.com/TKOaly/rv-backend
+
+servers:
+  - url: https://rv-backend-dev.herokuapp.com/
+    description: Staging environment
+  - url: https://rv-backend.herokuapp.com/
+    description: Production environment
+
+tags:
+  - name: normal
+    x-codegen-class: NormalApi
+  - name: admin
+    x-codegen-class: AdminApi
+
+components:
+  securitySchemes:
+    normalAccessToken:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description:
+        A JWT access token used for authenticating with the \"end user facing\" portition of the API.
+        Can be obtained with any valid credentials from route `/api/v2/authenticate`.
+    adminAccessToken:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description:
+        A JWT access token used for authenticating with the administrations portition of the API.
+        Can be obtained with administrator credentials from route `/api/v2/admin/authenticate`.
+  schemas:
+    Role:
+      type: string
+      enum:
+        - ADMIN
+        - USER
+        - NOEMAIL
+        - INACTIVE
+      example: USER
+    Product:
+      type: object
+      required: 
+        - barcode
+        - name
+        - category
+        - sellPrice
+        - stock
+      properties: 
+        barcode: 
+          type: string
+          example: "6430039222212"
+          description: Barcode on the product packaging. Used to uniquely identify the product.
+        name: 
+          type: string
+          example: Kombucha bakteerin makuinen bakteerijuoma
+          description: Human readable and user facing name of the product.
+        category: 
+          '$ref': '#/components/schemas/Category'
+        sellPrice: 
+          type: integer
+          example: 310
+          description: Price (in cents) at which the product is on sale.  
+        stock: 
+          type: integer
+          example: 10
+          description: Number of items in stock.
+    AdminProduct:
+      allOf:
+        - '$ref': '#/components/schemas/Product'
+        - type: object
+          required:
+            - buyPrice
+          properties:
+            buyPrice:
+              type: integer
+              example: 300
+              description: Price (in cents) at which the product was bought in.
+    Box:
+      type: object
+      required: 
+        - boxBarcode
+        - itemsPerBox
+        - product
+      properties: 
+        boxBarcode:
+          example: "01880335"
+          type: string
+          description: |
+            Barcode printed on the box, which contains multiple items of a product.
+            Used to uniquely identify the box.
+        itemsPerBox: 
+          type: integer
+          example: 18
+          description: Number of items contained in one box.
+        product:
+          '$ref': '#/components/schemas/Product'
+    PurchaseEventBase:
+      type: object
+      required: 
+        - purchaseId
+        - time
+        - price
+      properties: 
+        purchaseId: 
+          type: integer
+          example: 3053
+          description: Opaque unique identifier of the purchase event.
+        time: 
+          type: string
+          format: date-time
+          example: '2018-12-24T00:00:00.000Z'
+          description: Timestamp of the event in ISO-8601 format.
+        price: 
+          type: integer
+          example: 19
+          description: Price (in cents) of the product bought.
+        returned:
+          type: boolean
+          example: false
+          description: Has the user returned this product or not?
+    PurchaseEventProduct:
+      type: object
+      required:
+        - product
+      properties:
+        product:
+          '$ref': '#/components/schemas/Product'
+    PurchaseEventUser:
+      type: object
+      required:
+        - user
+      properties:
+        user:
+          '$ref': '#/components/schemas/User'
+    PurchaseEventBalance:
+      type: object
+      required:
+        - balanceAfter
+      properties:
+        balanceAfter:
+          type: integer
+          example: 1981
+          description: Balance of the user's account (in cents) after the purchase transaction.
+    PurchaseEventStock:
+      type: object
+      required:
+        - stockAfter
+      properties:
+        stockAfter:
+          type: integer
+          example: 11
+          description: Number of the bought product left in stock after the purchase transaction.
+    DepositEventBase:
+      type: object
+      required: 
+        - depositId
+        - time
+        - amount
+        - balanceAfter
+      properties: 
+        depositId: 
+          type: integer
+          description: Opaque unique identifier of the deposit event.
+        time: 
+          type: string
+          format: date-time
+          example: '2018-12-24T00:00:00.000Z'
+          description: Timestamp of the event in ISO-8601 format.
+        amount: 
+          type: integer
+          example: 2000
+          description: Amount deposited to the user's account in cents.
+        balanceAfter:
+          type: integer
+          example: 2500
+          description: Balance of the user's account after the deposit in cents.
+    DepositEventUser:
+      type: object
+      required:
+        - user
+      properties:
+        user:
+          '$ref': '#/components/schemas/User'
+    User: 
+      type: object
+      required: 
+        - userId
+        - username
+        - email
+        - moneyBalance
+        - role
+        - privacyLevel
+      properties: 
+        userId: 
+          type: integer
+          example: 415
+          description: Opaque unique identifier of the user.
+        username: 
+          type: string
+          example: fuxi2001
+          description: Username which is used in authentication.
+        fullName:
+          type: string
+          nullable: true
+          example: Fuxi C. S. McStudent
+          description: Real full name of the user.
+        email: 
+          type: string
+          example: fuxi.student@helsinki.fi
+          description: E-mail address at which the user can be reached.
+        moneyBalance: 
+          type: integer
+          example: 2000
+          description: Balance of the user's account in cents.
+        privacyLevel:
+          type: integer
+          example: 0
+          description: Privacy level of the user, 0 = no restrictions, 1 = hide username, 2 = hide even anonymous data
+          enum: [0, 1, 2]
+        role:
+          '$ref': '#/components/schemas/Role'
+    Category:
+      type: object
+      required: 
+        - categoryId
+        - description
+      properties: 
+        categoryId: 
+          type: integer
+          example: 10
+          description: Opaque unique identifier of the category.
+        description: 
+          type: string
+          example: Drinks, soda with bottle return
+          description: Human readable and user facing description of the product category.
+    Preference:
+      type: object
+      required:
+        - key
+        - value
+      properties:
+        key:
+          type: string
+          example: globalDefaultMargin
+          description: Identifier of the preference.
+        value:
+          description: |
+            Value of the preference, which can be any JSON value.
+            The type depends on the preference in question.
+          example: 0.05
+  responses:
+    InvalidCredentialsErrorResponse:
+      description: The JWT access token provided with the request is invalid or it is missing.
+      content:
+        application/json:
+          schema:
+            type: object
+            required:
+              - error_code
+              - message
+            properties:
+              error_code:
+                type: string
+                enum:
+                  - invalid_credentials
+                  - invalid_token
+              message:
+                type: string
+                example: Invalid username or password
+    NotAuthorizedErrorResponse:
+      description: Your user lacks the required privilege level to perform this action.
+      content:
+        application/json:
+          schema:
+            type: object
+            required:
+              - error_code
+              - message
+            properties:
+              error_code:
+                type: string
+                enum:
+                  - not_authorized
+                  - invalid_token
+              message:
+                type: string
+                example: Not authorized
+    NotFoundErrorResponse:
+      description: The resource your are requesting does not exist.
+      content:
+        application/json:
+          schema:
+            type: object
+            required:
+              - error_code
+              - message
+            properties:
+              error_code:
+                type: string
+                enum:
+                  - not_found
+              message:
+                type: string
+                example: No product with barcode \'1312767817\' found
+    BadRequestErrorResponse:
+      description: The request you sent contains invalid values or is missing fields.
+      content:
+        application/json:
+          schema:
+            type: object
+            required:
+              - error_code
+              - message
+            properties:
+              error_code:
+                type: string
+                enum:
+                  - bad_request
+                  - invalid_reference
+              message:
+                type: string
+                example: Missing or invalid fields in request
+              errors:
+                type: array
+                items:
+                  type: string
+                  example: 'boxBarcode should be a numeric 1-14 digit barcode' 
+    IdentifierTakenErrorResponse:
+      description: Creating a new resource failed, because a resource with the given identifier already exists.
+      content:
+        application/json:
+          schema:
+            type: object
+            required:
+              - error_code
+              - message
+            properties:
+              error_code:
+                type: string
+                enum:
+                  - identifier_taken
+              message:
+                type: string
+                example: Barcode already in use.
+    ResourceGone:
+      description: Resource gone
+      content:
+        application/json:
+          schema:
+            required:
+            - error_code
+            - message
+            properties:
+              error_code:
+                type: string
+                enum:
+                  - resource_gone
+              message:
+                type: string
+                example: This resource has been permanently removed.
+
+paths: 
+  /api/v1/register: 
+    post: 
+      summary: Create a new user
+      operationId: register
+      tags:
+        - normal
+      parameters:
+        - in: header
+          name: RV-Terminal-Secret
+          schema:
+            type: string
+          required: true
+      responses: 
+        201:
+          description: New user created successfully
+          content: 
+            application/json: 
+              schema: 
+                type: object
+                required: 
+                  - user
+                properties: 
+                  user: 
+                    '$ref': '#/components/schemas/User'
+        400:
+          '$ref': '#/components/responses/BadRequestErrorResponse'
+        403:
+          '$ref': '#/components/responses/NotAuthorizedErrorResponse'
+        409:
+          '$ref': '#/components/responses/IdentifierTakenErrorResponse'
+      requestBody: 
+        required: true
+        content: 
+          application/json: 
+            schema: 
+              type: object
+              required: 
+                - username
+                - password
+                - fullName
+                - email
+              properties: 
+                username: 
+                  type: string
+                  example: fuxi2001
+                  minLength: 1
+                password: 
+                  type: string
+                  example: hunter2
+                  minLength: 1
+                fullName: 
+                  type: string
+                  example: Fuxi C. S. McStudent
+                  minLength: 1
+                email: 
+                  type: string
+                  example: fuxi.cs.student@helsinki.fi
+                  minLength: 1
+  /api/v1/authenticate/rfid: 
+    post: 
+      summary: Deprecated, use /api/v2/authenticate/rfid
+      operationId: authenticate
+      tags:
+        - normal
+      responses:
+        401:
+          '$ref': '#/components/responses/InvalidCredentialsErrorResponse'        
+        403:
+          '$ref': '#/components/responses/NotAuthorizedErrorResponse'
+        400:
+          '$ref': '#/components/responses/BadRequestErrorResponse'
+      requestBody: 
+        required: true
+        content: 
+          application/json: 
+            schema: 
+              type: object
+              required:
+                - rfid
+              properties: 
+                rvTerminalSecret:
+                  type: string
+                rfid: 
+                  type: string
+                  example: 8a4f2f0a
+                  minLength: 1
+  /api/v1/authenticate: 
+    post: 
+      summary: Deprecated, use /api/v2/authenticate/rfid
+      operationId: authenticate
+      tags:
+        - normal
+      responses: 
+        401:
+          '$ref': '#/components/responses/InvalidCredentialsErrorResponse'        
+        403:
+          '$ref': '#/components/responses/NotAuthorizedErrorResponse'
+        400:
+          '$ref': '#/components/responses/BadRequestErrorResponse'
+      requestBody: 
+        required: true
+        content: 
+          application/json: 
+            schema: 
+              type: object
+              required:
+                - username
+                - password
+              properties: 
+                username: 
+                  type: string
+                  example: fuxi2001
+                  minLength: 1
+                password: 
+                  type: string
+                  example: hunter2
+  /api/v2/authenticate/rfid: 
+    post: 
+      summary: Authenticate with normal privileges
+      operationId: authenticate
+      tags:
+        - normal
+      responses: 
+        200:
+          description: Authentication successfull
+          content: 
+            application/json: 
+              schema: 
+                type: object
+                required: 
+                  - accessToken
+                  - passwordReset
+                properties: 
+                  accessToken: 
+                    type: string
+                    description: JSON Web Token
+                  rvTerminalSecret:
+                    type: string
+                    description: Include secret to allow access into rv terminal specific endpoints
+                  passwordReset:
+                    type: boolean
+                    description: If tells login with temppassword
+        401:
+          '$ref': '#/components/responses/InvalidCredentialsErrorResponse'        
+        403:
+          '$ref': '#/components/responses/NotAuthorizedErrorResponse'
+        400:
+          '$ref': '#/components/responses/BadRequestErrorResponse'
+      requestBody: 
+        required: true
+        content: 
+          application/json: 
+            schema: 
+              type: object
+              required:
+                - rfid
+              properties: 
+                rvTerminalSecret:
+                  type: string
+                rfid: 
+                  type: string
+                  example: 8a4f2f0a
+                  minLength: 1
+  /api/v2/authenticate: 
+    post: 
+      summary: Authenticate with normal privileges
+      operationId: authenticate
+      tags:
+        - normal
+      responses: 
+        200:
+          description: Authentication successfull
+          content: 
+            application/json: 
+              schema: 
+                type: object
+                required: 
+                  - accessToken
+                  - passwordReset
+                properties: 
+                  accessToken: 
+                    type: string
+                    description: JSON Web Token
+                  rvTerminalSecret:
+                    type: string
+                    description: Include secret to allow access into rv terminal specific endpoints
+                  passwordReset:
+                    type: boolean
+                    description: If tells login with temppassword
+        401:
+          '$ref': '#/components/responses/InvalidCredentialsErrorResponse'        
+        403:
+          '$ref': '#/components/responses/NotAuthorizedErrorResponse'
+        400:
+          '$ref': '#/components/responses/BadRequestErrorResponse'
+      requestBody: 
+        required: true
+        content: 
+          application/json: 
+            schema: 
+              type: object
+              required:
+                - username
+                - password
+              properties: 
+                username: 
+                  type: string
+                  example: fuxi2001
+                  minLength: 1
+                password: 
+                  type: string
+                  example: hunter2
+  /api/v1/products/search: 
+    post: 
+      summary: Search for products
+      operationId: searchProducts
+      tags:
+        - normal
+      security:
+        - normalAccessToken: []
+      requestBody:
+        required: true
+        content:
+          application/json: 
+            schema: 
+              type: object
+              required: 
+                - query
+              properties: 
+                query: 
+                  type: string
+                  example: muumilimsa
+      responses: 
+        200:
+          description: Request fulfilled successfully
+          content: 
+            application/json: 
+              schema: 
+                type: object
+                required: 
+                  - products
+                properties: 
+                  products: 
+                    type: array
+                    items: 
+                      '$ref': '#/components/schemas/Product'
+        401:
+          '$ref': '#/components/responses/InvalidCredentialsErrorResponse'        
+        403:
+          '$ref': '#/components/responses/NotAuthorizedErrorResponse'
+  /api/v1/products: 
+    get: 
+      summary: Get a list of all products
+      operationId: getProducts
+      tags:
+        - normal
+      security:
+        - normalAccessToken: []
+      responses: 
+        200:
+          description: Request fulfilled successfully
+          content: 
+            application/json: 
+              schema: 
+                type: object
+                required: 
+                  - products
+                properties: 
+                  products: 
+                    type: array
+                    items: 
+                      '$ref': '#/components/schemas/Product'
+        401:
+          '$ref': '#/components/responses/InvalidCredentialsErrorResponse'        
+        403:
+          '$ref': '#/components/responses/NotAuthorizedErrorResponse'
+  /api/v1/products/{barcode}: 
+    get:
+      summary: Get details of a specific product
+      operationId: getProduct
+      tags:
+        - normal
+      security:
+        - normalAccessToken: []
+      parameters: 
+        - name: barcode
+          description: Uniquely identifying barcode of the product.
+          required: true
+          in: path
+          schema: 
+            type: string
+      responses: 
+        200: 
+          description: Request fulfilled successfully
+          content: 
+            application/json: 
+              schema:
+                type: object
+                required: 
+                  - product
+                properties: 
+                  product:
+                    '$ref': '#/components/schemas/Product'
+        401:
+          '$ref': '#/components/responses/InvalidCredentialsErrorResponse'        
+        403:
+          '$ref': '#/components/responses/NotAuthorizedErrorResponse'
+        404:
+          '$ref': '#/components/responses/NotFoundErrorResponse'
+  /api/v1/products/{barcode}/return: 
+    post:
+      summary: Return a product if the same product was bought within 5 minutes and is not yet returned
+      operationId: returnProduct
+      tags:
+        - normal
+      security:
+        - normalAccessToken: []
+      parameters: 
+        - name: barcode
+          description: Uniquely identifying barcode of the product.
+          required: true
+          in: path
+          schema: 
+            type: string
+      responses: 
+        200:
+          description: Request successful
+        400:
+          '$ref': '#/components/responses/BadRequestErrorResponse'
+        401:
+          '$ref': '#/components/responses/NotAuthorizedErrorResponse'
+        403:
+          description: No recent non-returned purchases found
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - message
+                properties:
+                  message:
+                    type: string
+  /api/v1/products/{barcode}/purchase: 
+    post:
+      summary: Purchase a prouct
+      operationId: purchase
+      tags:
+        - normal
+      security:
+        - normalAccessToken: []
+      parameters: 
+        - name: barcode
+          description: Uniquely identifying barcode of the product.
+          required: true
+          in: path
+          schema: 
+            type: string
+      responses: 
+        200:
+          description: Purchase successfull
+          content: 
+            application/json: 
+              schema: 
+                type: object
+                required: 
+                  - accountBalance
+                  - productStock
+                  - purchases
+                properties: 
+                  accountBalance: 
+                    type: integer
+                    example: 19.81
+                  productStock: 
+                    type: integer
+                    example: 11
+                  purchases: 
+                    type: array
+                    items:
+                      allOf:
+                        - '$ref': '#/components/schemas/PurchaseEventBase'
+                        - '$ref': '#/components/schemas/PurchaseEventBalance'
+                        - '$ref': '#/components/schemas/PurchaseEventStock'
+        400:
+          '$ref': '#/components/responses/BadRequestErrorResponse'
+        401:
+          '$ref': '#/components/responses/InvalidCredentialsErrorResponse'        
+        403:
+          description: The account has insufficient funds and the purchase cannot be made.
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - error_code
+                  - message
+                properties:
+                  error_code:
+                    type: string
+                    enum:
+                      - insufficient_funds
+                      - not_authorized
+                  message:
+                    type: string
+                    example: Insufficient funds
+        404:
+          '$ref': '#/components/responses/NotFoundErrorResponse'
+      requestBody: 
+        required: true
+        content: 
+          application/json: 
+            schema: 
+              type: object
+              required: 
+                - count
+              properties: 
+                count: 
+                  type: integer
+                  example: 1
+                  minimum: 1
+  /api/v1/categories: 
+    get: 
+      summary: Get a list of product categories
+      operationId: getCategories
+      tags:
+        - normal
+      security:
+        - normalAccessToken: []
+      responses: 
+        200: 
+          description: Request fulfilled successfully
+          content: 
+            application/json: 
+              schema: 
+                type: object
+                required: 
+                  - categories
+                properties: 
+                  categories: 
+                    type: array
+                    items: 
+                      '$ref': '#/components/schemas/Category'
+        401:
+          '$ref': '#/components/responses/InvalidCredentialsErrorResponse'        
+        403:
+          '$ref': '#/components/responses/NotAuthorizedErrorResponse'
+  /api/v1/categories/{categoryId}: 
+    get: 
+      summary: Get details of a product category
+      operationId: getCategory
+      tags:
+        - normal
+      security:
+        - normalAccessToken: []
+      parameters: 
+        - name: categoryId
+          description: Unique identifier of the product category.
+          required: true
+          in: path
+          schema: 
+            type: integer
+      responses: 
+        200:
+          description: Request fulfilled successfully
+          content: 
+            application/json: 
+              schema: 
+                type: object
+                required: 
+                  - category
+                properties: 
+                  category: 
+                    '$ref': '#/components/schemas/Category'
+        401:
+          '$ref': '#/components/responses/InvalidCredentialsErrorResponse'        
+        403:
+          '$ref': '#/components/responses/NotAuthorizedErrorResponse'
+        404:
+          '$ref': '#/components/responses/NotFoundErrorResponse'
+  /api/v1/user:
+    get: 
+      summary: Get details of the authenticated user
+      operationId: getSessionUser
+      tags:
+        - normal
+      security:
+        - normalAccessToken: []
+      responses: 
+        200: 
+          description: Request fulfilled successfully
+          content: 
+            application/json: 
+              schema: 
+                type: object
+                required: 
+                  - user
+                properties: 
+                  user:
+                    '$ref': '#/components/schemas/User'
+        401:
+          '$ref': '#/components/responses/InvalidCredentialsErrorResponse'        
+        403:
+          '$ref': '#/components/responses/NotAuthorizedErrorResponse'
+    patch: 
+      summary: Update details of the authenticated user
+      operationId: updateSessionUser
+      tags:
+        - normal
+      security:
+        - normalAccessToken: []
+      responses: 
+        200: 
+          description: User information updated successfully
+          content: 
+            application/json: 
+              schema: 
+                type: object
+                required: 
+                  - user
+                properties: 
+                  user: 
+                    '$ref': '#/components/schemas/User'
+        401:
+          '$ref': '#/components/responses/InvalidCredentialsErrorResponse'        
+        403:
+          '$ref': '#/components/responses/NotAuthorizedErrorResponse'
+        400:
+          '$ref': '#/components/responses/BadRequestErrorResponse'
+        409:
+          '$ref': '#/components/responses/IdentifierTakenErrorResponse'
+      requestBody: 
+        required: true
+        content: 
+          application/json: 
+            schema: 
+              type: object
+              minProperties: 1
+              additionalProperties: false
+              properties: 
+                username: 
+                  type: string
+                  example: 'jäärä2001'
+                  minLength: 1
+                fullName: 
+                  type: string
+                  example: 'Jäärä F. S. McConsultant'
+                  minLength: 1
+                email: 
+                  type: string
+                  example: 'jaara.fs.constultant@coolcorp.com'
+                  minLength: 1
+  /api/v1/statistics/leaderboard: 
+    get: 
+      summary: Get top list of rv users, requires RV-Terminal-Secret header
+      operationId: leaderboard
+      tags:
+        - normal
+      responses: 
+        200: 
+          description: Check success.
+          content: 
+            application/json: 
+              schema: 
+                type: array
+                required: 
+                  - name
+                  - saldo
+                properties: 
+                  name: 
+                    type: string
+                  saldo:
+                    type: integer
+        403:
+          '$ref': '#/components/responses/NotAuthorizedErrorResponse'
+        400:
+          '$ref': '#/components/responses/BadRequestErrorResponse'
+  /api/v1/user/user_exists: 
+    post: 
+      summary: Check if an user with the given username exists
+      operationId: user_exists
+      tags:
+        - normal
+      responses: 
+        200: 
+          description: Check success.
+          content: 
+            application/json: 
+              schema: 
+                type: object
+                required: 
+                  - exists
+                properties: 
+                  exists: 
+                    type: boolean
+        401:
+          '$ref': '#/components/responses/InvalidCredentialsErrorResponse'        
+        403:
+          '$ref': '#/components/responses/NotAuthorizedErrorResponse'
+        400:
+          '$ref': '#/components/responses/BadRequestErrorResponse'
+      requestBody: 
+        required: true
+        content: 
+          application/json: 
+            schema: 
+              type: object
+              required: 
+                - username
+              properties: 
+                username: 
+                  type: string
+                  example: asd123
+  /api/v1/user/deposit: 
+    post: 
+      summary: Deposit money to the authenticated user's account
+      operationId: deposit
+      tags:
+        - normal
+      security:
+        - normalAccessToken: []
+      responses: 
+        200: 
+          description: Balance added to the account successfully
+          content: 
+            application/json: 
+              schema: 
+                type: object
+                required: 
+                  - accountBalance
+                  - deposit
+                properties: 
+                  accountBalance: 
+                    type: integer
+                  deposit: 
+                    allOf:
+                      - '$ref': '#/components/schemas/DepositEventBase'
+        401:
+          '$ref': '#/components/responses/InvalidCredentialsErrorResponse'        
+        403:
+          '$ref': '#/components/responses/NotAuthorizedErrorResponse'
+        400:
+          '$ref': '#/components/responses/BadRequestErrorResponse'
+      requestBody: 
+        required: true
+        content: 
+          application/json: 
+            schema: 
+              type: object
+              required: 
+                - amount
+                - type
+              properties: 
+                amount: 
+                  type: integer
+                  minimum: 1
+                type:
+                  type: string
+                  enum: ["cash", "banktransfer"]
+  /api/v1/user/purchaseHistory: 
+    get: 
+      summary: Get list of the authenticated user's past purchases
+      operationId: getPurchaseHistory
+      tags:
+        - normal
+      security:
+        - normalAccessToken: []
+      responses: 
+        200: 
+          description: Request fulfilled successfully
+          content: 
+            application/json: 
+              schema: 
+                type: object
+                required: 
+                  - purchases
+                properties: 
+                  purchases: 
+                    type: array
+                    items:
+                      allOf:
+                      - '$ref': '#/components/schemas/PurchaseEventBase'
+                      - '$ref': '#/components/schemas/PurchaseEventProduct'
+                      - '$ref': '#/components/schemas/PurchaseEventBalance'
+                  offset:
+                    description: |
+                      Only return events with lesser history id (results before offset id).
+                      If omitted, starts from the latest result.
+                    type: integer
+                    example: 1237
+                  limit:
+                    description: | 
+                      Return only N latest results.
+                      If omitted, returns all results.
+                    type: integer
+                    example: 50
+                    minimum: 1
+        401:
+          '$ref': '#/components/responses/InvalidCredentialsErrorResponse'        
+        403:
+          '$ref': '#/components/responses/NotAuthorizedErrorResponse'
+  /api/v1/user/purchaseHistory/{purchaseId}: 
+    get: 
+      summary: Get details of a specific purchase made by the authenticated user
+      operationId: getPurchaseEvent
+      tags:
+        - normal
+      security:
+        - normalAccessToken: []
+      parameters: 
+        - name: purchaseId
+          description: Unique identifier of the purchase event.
+          required: true
+          in: path
+          schema: 
+            type: string
+      responses: 
+        200: 
+          description: Request fulfilled successfully
+          content: 
+            application/json: 
+              schema: 
+                type: object
+                required: 
+                  - purchase
+                properties: 
+                  purchase:
+                    allOf:
+                      - '$ref': '#/components/schemas/PurchaseEventBase'
+                      - '$ref': '#/components/schemas/PurchaseEventProduct'
+                      - '$ref': '#/components/schemas/PurchaseEventBalance'
+        401:
+          '$ref': '#/components/responses/InvalidCredentialsErrorResponse'        
+        403:
+          '$ref': '#/components/responses/NotAuthorizedErrorResponse'
+        404:
+          '$ref': '#/components/responses/NotFoundErrorResponse'
+  /api/v1/user/depositHistory: 
+    get: 
+      summary: Get list of past deposit events of the authenticated user
+      operationId: getDepositHistory
+      tags:
+        - normal
+      security:
+        - normalAccessToken: []
+      responses: 
+        200: 
+          description: Request fulfilled successfully
+          content: 
+            application/json: 
+              schema: 
+                type: object
+                required: 
+                  - deposits
+                properties: 
+                  deposits: 
+                    type: array
+                    items:
+                      '$ref': '#/components/schemas/DepositEventBase'
+                  offset:
+                    description: |
+                      Only return events with lesser history id (results before offset id).
+                      If omitted, starts from the latest result.
+                    type: integer
+                    example: 1237
+                  limit:
+                    description: | 
+                      Return only N latest results.
+                      If omitted, returns all results.
+                    type: integer
+                    example: 50
+                    minimum: 1
+        401:
+          '$ref': '#/components/responses/InvalidCredentialsErrorResponse'        
+        403:
+          '$ref': '#/components/responses/NotAuthorizedErrorResponse'
+  /api/v1/user/depositHistory/{depositId}: 
+    get: 
+      summary: Get details of a specific deposit event created by the authenticated user
+      operationId: getDepositEvent
+      tags:
+        - normal
+      security:
+        - normalAccessToken: []
+      parameters: 
+        - name: depositId
+          description: Unique identifier of the deposit event.
+          required: true
+          in: path
+          schema: 
+            type: string
+      responses: 
+        200: 
+          description: Request fulfilled successfully
+          content: 
+            application/json: 
+              schema: 
+                type: object
+                required: 
+                  - deposit
+                properties: 
+                  deposit: 
+                    '$ref': '#/components/schemas/DepositEventBase'
+        401:
+          '$ref': '#/components/responses/InvalidCredentialsErrorResponse'        
+        403:
+          '$ref': '#/components/responses/NotAuthorizedErrorResponse'
+        404:
+          '$ref': '#/components/responses/NotFoundErrorResponse'
+  /api/v1/user/changePrivacylevel:
+    post:
+      summary: |
+        Change the account's privacy level
+        0 = No restrictions
+        1 = Hide username from public (for example, leaderboards)
+        2 = Hide all data from public (for example, list of recent purchases)
+      operationId: changePrivacylevel
+      tags:
+        - normal
+      security:
+        - normalAccessToken: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - privacyLevel
+              properties:
+                privacyLevel:
+                  type: integer
+                  example: 2
+                  enum: [0,1,2]
+      responses:
+        204:
+          description: Privacy level changed successfully
+        400:
+          '$ref': '#/components/responses/BadRequestErrorResponse'
+        401:
+          '$ref': '#/components/responses/NotAuthorizedErrorResponse'
+  /api/v1/user/changeRfid:
+    post:
+      summary: Change the account's rfid
+      operationId: changeRfid
+      tags:
+        - normal
+      security:
+        - normalAccessToken: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - rfid
+              properties:
+                rfid:
+                  type: string
+                  example: a1b3c3d7
+      responses:
+        204:
+          description: Rfid changed successfully
+        400:
+          '$ref': '#/components/responses/BadRequestErrorResponse'
+        401:
+          '$ref': '#/components/responses/InvalidCredentialsErrorResponse'        
+        403:
+          '$ref': '#/components/responses/NotAuthorizedErrorResponse'
+        409:
+           '$ref': '#/components/responses/IdentifierTakenErrorResponse'
+  /api/v1/user/changePassword:
+    post:
+      summary: Change the account's password
+      operationId: changePassword
+      tags:
+        - normal
+      security:
+        - normalAccessToken: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - password
+              properties:
+                password:
+                  type: string
+                  example: hunter2
+                  minLength: 1
+      responses:
+        204:
+          description: Password changed successfully
+        400:
+          '$ref': '#/components/responses/BadRequestErrorResponse'
+        401:
+          '$ref': '#/components/responses/NotAuthorizedErrorResponse'
+  /api/v1/admin/boxes/search: 
+    post: 
+      summary: Search for boxes
+      operationId: searchBoxes
+      tags:
+        - normal
+      security:
+        - adminAccessToken: []
+      requestBody:
+        required: true
+        content:
+          application/json: 
+            schema: 
+              type: object
+              required: 
+                - query
+              properties: 
+                query: 
+                  type: string
+                  example: muumilimsa
+      responses: 
+        200:
+          description: Request fulfilled successfully
+          content: 
+            application/json: 
+              schema: 
+                type: object
+                required: 
+                  - boxes
+                properties: 
+                  boxes: 
+                    type: array
+                    items: 
+                      '$ref': '#/components/schemas/Box'
+        401:
+          '$ref': '#/components/responses/InvalidCredentialsErrorResponse'        
+        403:
+          '$ref': '#/components/responses/NotAuthorizedErrorResponse'
+  /api/v1/admin/boxes: 
+    get: 
+      summary: Get a list of product boxes, optionally filter by item barcode
+      operationId: getBoxes
+      tags:
+        - admin
+      security:
+        - adminAccessToken: []
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                itembarcode:
+                  description: Only return boxes related to a given barcode
+                  type: string
+                  example: '4740098010166'
+      responses: 
+        200: 
+          description: Request fulfilled successfully
+          content: 
+            application/json: 
+              schema: 
+                type: object
+                required: 
+                  - boxes
+                properties: 
+                  boxes: 
+                    type: array
+                    items: 
+                      '$ref': '#/components/schemas/Box'
+        401:
+          '$ref': '#/components/responses/InvalidCredentialsErrorResponse'        
+        403:
+          '$ref': '#/components/responses/NotAuthorizedErrorResponse'
+    post: 
+      summary: Create a new box of products
+      operationId: createBox
+      tags:
+        - admin
+      security:
+        - adminAccessToken: []
+      responses: 
+        201: 
+          description: A new box created successfully
+          content:
+            application/json: 
+              schema: 
+                type: object
+                required: 
+                  - box
+                properties: 
+                  box: 
+                    '$ref': '#/components/schemas/Box'
+        401:
+          '$ref': '#/components/responses/InvalidCredentialsErrorResponse'        
+        403:
+          '$ref': '#/components/responses/NotAuthorizedErrorResponse'
+        400:
+          '$ref': '#/components/responses/BadRequestErrorResponse'
+        409:
+          '$ref': '#/components/responses/IdentifierTakenErrorResponse'
+      requestBody: 
+        required: true
+        content: 
+          application/json: 
+            schema: 
+              type: object
+              required: 
+                - boxBarcode
+                - itemsPerBox
+                - productBarcode
+              properties: 
+                boxBarcode: 
+                  type: string
+                  example: '01766752'
+                  minLength: 1
+                  maxLength: 14
+                itemsPerBox: 
+                  type: integer
+                  example: 18
+                  minimum: 1
+                productBarcode: 
+                  type: string
+                  example: '7314660003114'
+                  minLength: 1
+                  maxLength: 14
+  /api/v1/admin/boxes/{boxBarcode}: 
+    get: 
+      summary: Get the details of a specific product box
+      operationId: getBox
+      tags:
+        - admin
+      security:
+        - adminAccessToken: []
+      parameters: 
+        - name: boxBarcode
+          description: Uniquely identifying barcode of the box.
+          required: true
+          in: path
+          schema: 
+            type: string
+      responses: 
+        200: 
+          description: Request fulfilled successfully
+          content: 
+            application/json: 
+              schema: 
+                type: object
+                required: 
+                  - box
+                properties: 
+                  box: 
+                    '$ref': '#/components/schemas/Box'
+        401:
+          '$ref': '#/components/responses/InvalidCredentialsErrorResponse'        
+        403:
+          '$ref': '#/components/responses/NotAuthorizedErrorResponse'
+        404:
+          '$ref': '#/components/responses/NotFoundErrorResponse'
+    patch: 
+      summary: Update the details of a product box
+      operationId: updateBox
+      tags:
+        - admin
+      security:
+        - adminAccessToken: []
+      parameters: 
+        - name: boxBarcode
+          description: Uniquely identifying barcode of the box.
+          required: true
+          in: path
+          schema: 
+            type: string
+      responses: 
+        200: 
+          description: Box updated successfully
+          content: 
+            application/json: 
+              schema: 
+                type: object
+                required: 
+                  - box
+                properties: 
+                  box: 
+                    '$ref': '#/components/schemas/Box'
+        400:
+          '$ref': '#/components/responses/BadRequestErrorResponse'
+        401:
+          '$ref': '#/components/responses/InvalidCredentialsErrorResponse'        
+        403:
+          '$ref': '#/components/responses/NotAuthorizedErrorResponse'
+        404:
+          '$ref': '#/components/responses/NotFoundErrorResponse'
+      requestBody: 
+        required: true
+        content: 
+          application/json: 
+            schema: 
+              type: object
+              minProperties: 1
+              additionalProperties: false
+              properties: 
+                itemsPerBox: 
+                  type: integer
+                  example: 18
+                  minimum: 1
+                productBarcode: 
+                  type: string
+                  example: '7314660003114'
+                  minLength: 1
+                  maxLength: 14
+    delete: 
+      summary: Delete a product box
+      operationId: deleteBox
+      tags:
+        - admin
+      security:
+        - adminAccessToken: []
+      parameters: 
+        - name: boxBarcode
+          description: Uniquely identifying barcode of the box.
+          required: true
+          in: path
+          schema: 
+            type: string
+      responses: 
+        200: 
+          description: Box deleted successfully
+          content: 
+            application/json: 
+              schema: 
+                type: object
+                required: 
+                  - deletedBox
+                properties: 
+                  deletedBox: 
+                    '$ref': '#/components/schemas/Box'
+        400:
+          '$ref': '#/components/responses/BadRequestErrorResponse'
+        401:
+          '$ref': '#/components/responses/InvalidCredentialsErrorResponse'        
+        403:
+          '$ref': '#/components/responses/NotAuthorizedErrorResponse'
+        404:
+          '$ref': '#/components/responses/NotFoundErrorResponse'
+  /api/v1/admin/boxes/{boxBarcode}/buyIn: 
+    post: 
+      summary: Add products to stock by the boxful
+      operationId: buyInBox
+      tags:
+        - admin
+      security:
+        - adminAccessToken: []
+      parameters: 
+        - name: boxBarcode
+          description: Uniquely identifying barcode of the box.
+          required: true
+          in: path
+          schema: 
+            type: string
+      responses: 
+        200: 
+          description: Product stock updated successfully
+          content: 
+            application/json: 
+              schema: 
+                type: object
+                required: 
+                  - productStock
+                  - productBuyPrice
+                  - productSellPrice
+                properties: 
+                  productStock: 
+                    type: integer
+                    example: 11
+                  productBuyPrice: 
+                    type: integer
+                    example: 290
+                  productSellPrice: 
+                    type: integer
+                    example: 300
+        400:
+          '$ref': '#/components/responses/BadRequestErrorResponse'
+        401:
+          '$ref': '#/components/responses/InvalidCredentialsErrorResponse'        
+        403:
+          '$ref': '#/components/responses/NotAuthorizedErrorResponse'
+        404:
+          '$ref': '#/components/responses/NotFoundErrorResponse'
+      requestBody: 
+        required: true
+        content: 
+          application/json: 
+            schema: 
+              type: object
+              required: 
+                - boxCount
+                - productBuyPrice
+                - productSellPrice
+              properties: 
+                boxCount: 
+                  type: integer
+                  example: 3
+                  minimum: 1
+                productBuyPrice: 
+                  type: integer
+                  example: 290
+                  minimum: 0
+                productSellPrice: 
+                  type: integer
+                  example: 300
+                  minimum: 0
+  /api/v1/admin/products: 
+    get: 
+      summary: Get a list of all products
+      operationId: getProducts
+      tags:
+        - admin
+      security:
+        - adminAccessToken: []
+      responses: 
+        200: 
+          description: Request fulfilled successfully
+          content: 
+            application/json: 
+              schema: 
+                type: object
+                required: 
+                  - products
+                properties: 
+                  products: 
+                    type: array
+                    items: 
+                      '$ref': '#/components/schemas/AdminProduct'
+        401:
+          '$ref': '#/components/responses/InvalidCredentialsErrorResponse'        
+        403:
+          '$ref': '#/components/responses/NotAuthorizedErrorResponse'
+    post: 
+      summary: Create a new product
+      operationId: createProduct
+      tags:
+        - admin
+      security:
+        - adminAccessToken: []
+      responses: 
+        201: 
+          description: New product created successfully
+          content: 
+            application/json: 
+              schema: 
+                type: object
+                required: 
+                  - product
+                properties: 
+                  product: 
+                    '$ref': '#/components/schemas/AdminProduct'
+        400:
+          '$ref': '#/components/responses/BadRequestErrorResponse'
+        401:
+          '$ref': '#/components/responses/InvalidCredentialsErrorResponse'        
+        403:
+          '$ref': '#/components/responses/NotAuthorizedErrorResponse'
+        409:
+          '$ref': '#/components/responses/IdentifierTakenErrorResponse'
+      requestBody: 
+        required: true
+        content: 
+          application/json: 
+            schema: 
+              type: object
+              required: 
+                - barcode
+                - name
+                - categoryId
+                - buyPrice
+                - sellPrice
+                - stock
+              properties: 
+                barcode: 
+                  type: string
+                  example: '7314660003114'
+                  minLength: 1
+                  maxLength: 14
+                name: 
+                  type: string
+                  example: Muumilimsa
+                  minLength: 1
+                categoryId: 
+                  type: integer
+                  example: 10
+                  minimum: 0
+                buyPrice: 
+                  type: integer
+                  example: 210
+                sellPrice: 
+                  type: integer
+                  example: 220
+                stock: 
+                  type: integer
+                  example: 8
+  /api/v1/admin/products/{barcode}: 
+    get: 
+      summary: Get details of a specific product
+      operationId: getProduct
+      tags:
+        - admin
+      security:
+        - adminAccessToken: []
+      parameters: 
+        - name: barcode
+          description: Uniquely identifying barcode of the product.
+          required: true
+          in: path
+          schema: 
+            type: string
+      responses: 
+        200: 
+          description: Request fulfilled successfully
+          content: 
+            application/json: 
+              schema: 
+                type: object
+                required: 
+                  - product
+                properties: 
+                  product: 
+                    '$ref': '#/components/schemas/AdminProduct'
+        401:
+          '$ref': '#/components/responses/InvalidCredentialsErrorResponse'        
+        403:
+          '$ref': '#/components/responses/NotAuthorizedErrorResponse'
+        404:
+          '$ref': '#/components/responses/NotFoundErrorResponse'
+    patch: 
+      summary: Update the details of a specific product
+      operationId: updateProduct
+      tags:
+        - admin
+      security:
+        - adminAccessToken: []
+      parameters: 
+        - name: barcode
+          description: Uniquely identifying barcode of the product.
+          required: true
+          in: path
+          schema: 
+            type: string
+      responses: 
+        200: 
+          description: Product updated successfully
+          content: 
+            application/json: 
+              schema: 
+                type: object
+                required: 
+                  - product
+                properties: 
+                  product: 
+                    '$ref': '#/components/schemas/AdminProduct'
+        400:
+          '$ref': '#/components/responses/BadRequestErrorResponse'
+        401:
+          '$ref': '#/components/responses/InvalidCredentialsErrorResponse'        
+        403:
+          '$ref': '#/components/responses/NotAuthorizedErrorResponse'
+        404:
+          '$ref': '#/components/responses/NotFoundErrorResponse'
+      requestBody: 
+        required: true
+        content: 
+          application/json: 
+            schema: 
+              type: object
+              minProperties: 1
+              additionalProperties: false
+              properties: 
+                name: 
+                  type: string
+                  example: Muumilimsa
+                  minLength: 1
+                categoryId: 
+                  type: integer
+                  example: 10
+                  minimum: 0
+                buyPrice: 
+                  type: integer
+                  example: 210
+                sellPrice: 
+                  type: integer
+                  example: 220
+                stock: 
+                  type: integer
+                  example: 8
+#    delete: 
+#      summary: Delete a product
+#      operationId: deleteProduct
+#      tags:
+#        - admin
+#      security:
+#        - adminAccessToken: []
+#      parameters: 
+#        - name: barcode
+#          description: Uniquely identifying barcode of the product.
+#          required: true
+#          in: path
+#          schema: 
+#            type: string
+#      responses: 
+#        200: 
+#          description: Product deleted successfully
+#          content: 
+#            application/json: 
+#              schema: 
+#                type: object
+#                required: 
+#                  - deletedProduct
+#                properties: 
+#                  deletedProduct: 
+#                    '$ref': '#/components/schemas/AdminProduct'
+#        401:
+#          '$ref': '#/components/responses/InvalidCredentialsErrorResponse'
+#        404:
+#          '$ref': '#/components/responses/NotFoundErrorResponse'
+  /api/v1/admin/products/{barcode}/buyIn: 
+    post: 
+      summary: Add product to stock
+      operationId: buyInProduct
+      tags:
+        - admin
+      security:
+        - adminAccessToken: []
+      parameters: 
+        - name: barcode
+          description: Uniquely identifying barcode of the product.
+          required: true
+          in: path
+          schema: 
+            type: string
+      responses: 
+        200: 
+          description: Product stock updated successfully
+          content: 
+            application/json: 
+              schema: 
+                type: object
+                required: 
+                  - stock
+                  - buyPrice
+                  - sellPrice
+                properties: 
+                  stock: 
+                    type: integer
+                    example: 11
+                  buyPrice: 
+                    type: integer
+                    example: 210
+                  sellPrice: 
+                    type: integer
+                    example: 220
+        400:
+          '$ref': '#/components/responses/BadRequestErrorResponse'
+        401:
+          '$ref': '#/components/responses/InvalidCredentialsErrorResponse'        
+        403:
+          '$ref': '#/components/responses/NotAuthorizedErrorResponse'
+        404:
+          '$ref': '#/components/responses/NotFoundErrorResponse'
+      requestBody: 
+        required: true
+        content: 
+          application/json: 
+            schema: 
+              type: object
+              required: 
+                - count
+                - buyPrice
+                - sellPrice
+              properties: 
+                count: 
+                  type: integer
+                  example: 3
+                  minimum: 1
+                buyPrice: 
+                  type: integer
+                  example: 210
+                  minimum: 0
+                sellPrice: 
+                  type: integer
+                  example: 220
+                  minimum: 0
+  /api/v1/admin/products/{barcode}/purchaseHistory: 
+    get: 
+      summary: Get a list of product's purchase events
+      operationId: getProductPurchaseHistory
+      tags:
+        - admin
+      security:
+        - adminAccessToken: []
+      parameters: 
+        - name: barcode
+          description: Uniquely identifying barcode of the product.
+          required: true
+          in: path
+          schema: 
+            type: string
+      responses: 
+        200: 
+          description: Request fulfilled successfully
+          content: 
+            application/json: 
+              schema: 
+                type: object
+                required: 
+                  - purchases
+                properties: 
+                  purchases: 
+                    type: array
+                    items:
+                      allOf:
+                        - '$ref': '#/components/schemas/PurchaseEventBase'
+                        - '$ref': '#/components/schemas/PurchaseEventUser'
+                        - '$ref': '#/components/schemas/PurchaseEventStock'
+        401:
+          '$ref': '#/components/responses/InvalidCredentialsErrorResponse'        
+        403:
+          '$ref': '#/components/responses/NotAuthorizedErrorResponse'
+        404:
+          '$ref': '#/components/responses/NotFoundErrorResponse'
+  /api/v1/admin/products/{barcode}/purchaseHistory/{purchaseId}: 
+    get: 
+      summary: Get a specific purchase event
+      operationId: getProductPurchaseEvent
+      tags:
+        - admin
+      security:
+        - adminAccessToken: []
+      parameters: 
+        - name: barcode
+          description: Uniquely identifying barcode of the product.
+          required: true
+          in: path
+          schema: 
+            type: string
+            example: '7314660003114'
+        - name: purchaseId
+          description: Unique identifier of the purchase event.
+          required: true
+          in: path
+          schema: 
+            type: integer
+            example: 3015
+      responses: 
+        200: 
+          description: Request fulfilled successfully
+          content: 
+            application/json: 
+              schema: 
+                type: object
+                required: 
+                  - purchase
+                properties: 
+                  purchase: 
+                    allOf:
+                        - '$ref': '#/components/schemas/PurchaseEventBase'
+                        - '$ref': '#/components/schemas/PurchaseEventUser'
+                        - '$ref': '#/components/schemas/PurchaseEventStock'
+        401:
+          '$ref': '#/components/responses/InvalidCredentialsErrorResponse'        
+        403:
+          '$ref': '#/components/responses/NotAuthorizedErrorResponse'
+        404:
+          '$ref': '#/components/responses/NotFoundErrorResponse'
+  /api/v1/admin/categories: 
+    get: 
+      summary: Get a list of product categories
+      operationId: getCategories
+      tags:
+        - admin
+      security:
+        - adminAccessToken: []
+      responses: 
+        200: 
+          description: Request fulfilled successfully
+          content: 
+            application/json: 
+              schema: 
+                type: object
+                required: 
+                  - categories
+                properties: 
+                  categories: 
+                    type: array
+                    items: 
+                      '$ref': '#/components/schemas/Category'
+        401:
+          '$ref': '#/components/responses/InvalidCredentialsErrorResponse'        
+        403:
+          '$ref': '#/components/responses/NotAuthorizedErrorResponse'
+    post: 
+      summary: Create a new product category
+      operationId: createCategory
+      tags:
+        - admin
+      security:
+        - adminAccessToken: []
+      responses: 
+        201: 
+          description: New product category created successfully
+          content: 
+            application/json: 
+              schema: 
+                type: object
+                required: 
+                  - category
+                properties: 
+                  category: 
+                    '$ref': '#/components/schemas/Category'
+        400:
+          '$ref': '#/components/responses/BadRequestErrorResponse'
+        401:
+          '$ref': '#/components/responses/InvalidCredentialsErrorResponse'        
+        403:
+          '$ref': '#/components/responses/NotAuthorizedErrorResponse'
+      requestBody: 
+        required: true
+        content: 
+          application/json: 
+            schema: 
+              type: object
+              required: 
+                - description
+              properties: 
+                description: 
+                  type: string
+                  minLength: 1
+  /api/v1/admin/categories/{categoryId}: 
+    get: 
+      summary: Get the details of a product category
+      operationId: getCategory
+      tags:
+        - admin
+      security:
+        - adminAccessToken: []
+      parameters: 
+        - name: categoryId
+          description: Unique identifier of the product category.
+          required: true
+          in: path
+          schema: 
+            type: integer
+            example: 10
+      responses: 
+        200: 
+          description: Request fulfilled successfully
+          content: 
+            application/json: 
+              schema: 
+                type: object
+                required: 
+                  - category
+                properties: 
+                  category: 
+                    '$ref': '#/components/schemas/Category'
+        401:
+          '$ref': '#/components/responses/InvalidCredentialsErrorResponse'        
+        403:
+          '$ref': '#/components/responses/NotAuthorizedErrorResponse'
+        404:
+          '$ref': '#/components/responses/NotFoundErrorResponse'
+    patch: 
+      summary: Update details of a product category
+      operationId: updateCategory
+      tags:
+        - admin
+      security:
+        - adminAccessToken: []
+      parameters: 
+        - name: categoryId
+          description: Unique identifier of the product category.
+          required: true
+          in: path
+          schema: 
+            type: string
+      responses: 
+        200: 
+          description: Category updated successfully
+          content: 
+            application/json: 
+              schema: 
+                type: object
+                required: 
+                  - category
+                properties: 
+                  category: 
+                    '$ref': '#/components/schemas/Category'
+        400:
+          '$ref': '#/components/responses/BadRequestErrorResponse'
+        401:
+          '$ref': '#/components/responses/InvalidCredentialsErrorResponse'        
+        403:
+          '$ref': '#/components/responses/NotAuthorizedErrorResponse'
+        404:
+          '$ref': '#/components/responses/NotFoundErrorResponse'
+      requestBody: 
+        required: true
+        content: 
+          application/json: 
+            schema: 
+              type: object
+              required: 
+                - description
+              properties: 
+                description: 
+                  type: string
+                  minLength: 1
+    delete: 
+      summary: Delete a product category
+      operationId: deleteCategory
+      tags:
+        - admin
+      security:
+        - adminAccessToken: []
+      parameters: 
+        - name: categoryId
+          description: Unique identifier of the product category.
+          required: true
+          in: path
+          schema: 
+            type: string
+      responses: 
+        200: 
+          description: Category deleted successfully
+          content: 
+            application/json: 
+              schema: 
+                type: object
+                required: 
+                  - deletedCategory
+                  - movedProducts
+                properties: 
+                  deletedCategory: 
+                    '$ref': '#/components/schemas/Category'
+                  movedProducts: 
+                    type: array
+                    items: 
+                      type: string
+        401:
+          '$ref': '#/components/responses/InvalidCredentialsErrorResponse'        
+        403:
+          description: 'Cannot delete the default product category'
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - error_code
+                  - message
+                properties:
+                  error_code:
+                    type: string
+                    enum:
+                      - forbidden_reference
+                      - not_authorized
+                  message:
+                    type: string
+                    example: Cannot delete the default category
+        404:
+          '$ref': '#/components/responses/NotFoundErrorResponse'
+  /api/v1/admin/users: 
+    get: 
+      summary: Get a list of all users
+      operationId: getUsers
+      tags:
+        - admin
+      security:
+        - adminAccessToken: []
+      responses: 
+        200: 
+          description: Request fulfilled successfully
+          content: 
+            application/json: 
+              schema: 
+                type: object
+                required: 
+                  - users
+                properties: 
+                  users: 
+                    type: array
+                    items: 
+                      '$ref': '#/components/schemas/User'
+        401:
+          '$ref': '#/components/responses/InvalidCredentialsErrorResponse'        
+        403:
+          '$ref': '#/components/responses/NotAuthorizedErrorResponse'
+  /api/v1/admin/users/{userId}: 
+    get: 
+      summary: Get the details of a user
+      operationId: getUser
+      tags:
+        - admin
+      security:
+        - adminAccessToken: []
+      parameters: 
+        - name: userId
+          description: Unique identifier of the user.
+          required: true
+          in: path
+          schema: 
+            type: integer
+            example: 324
+      responses: 
+        200: 
+          description: Request fulfilled successfully
+          content: 
+            application/json: 
+              schema: 
+                type: object
+                required: 
+                  - user
+                properties: 
+                  user: 
+                    '$ref': '#/components/schemas/User'
+        401:
+          '$ref': '#/components/responses/InvalidCredentialsErrorResponse'        
+        403:
+          '$ref': '#/components/responses/NotAuthorizedErrorResponse'
+        404:
+          '$ref': '#/components/responses/NotFoundErrorResponse'
+  /api/v1/admin/users/{userId}/purchaseHistory: 
+    get: 
+      summary: Get user's purchase history
+      operationId: getUserPurchaseHistory
+      tags:
+        - admin
+      security:
+        - adminAccessToken: []
+      parameters: 
+        - name: userId
+          description: Unique identifier of the user.
+          required: true
+          in: path
+          schema: 
+            type: integer
+            example: 324
+      responses: 
+        200: 
+          description: Request fulfilled successfully
+          content: 
+            application/json: 
+              schema: 
+                type: object
+                required: 
+                  - purchases
+                properties: 
+                  purchases: 
+                    type: array
+                    items: 
+                      allOf:
+                          - '$ref': '#/components/schemas/PurchaseEventBase'
+                          - '$ref': '#/components/schemas/PurchaseEventProduct'
+                          - '$ref': '#/components/schemas/PurchaseEventBalance'
+        401:
+          '$ref': '#/components/responses/InvalidCredentialsErrorResponse'        
+        403:
+          '$ref': '#/components/responses/NotAuthorizedErrorResponse'
+        404:
+          '$ref': '#/components/responses/NotFoundErrorResponse'
+  /api/v1/admin/users/{userId}/purchaseHistory/{purchaseId}: 
+    get: 
+      summary: Get details of a specific purchase event
+      operationId: getUserPurchaseHistoryEvent
+      tags:
+        - admin
+      security:
+        - adminAccessToken: []
+      parameters: 
+        - name: userId
+          description: Unique identifier of the user.
+          required: true
+          in: path
+          schema: 
+            type: integer
+            example: 324
+        - name: purchaseId
+          description: Unique identifier of the purchase event.
+          required: true
+          in: path
+          schema: 
+            type: integer
+            example: 3015
+      responses: 
+        200: 
+          description: Request fulfilled successfully
+          content: 
+            application/json: 
+              schema: 
+                type: object
+                required: 
+                  - purchase
+                properties: 
+                  purchase: 
+                    allOf:
+                          - '$ref': '#/components/schemas/PurchaseEventBase'
+                          - '$ref': '#/components/schemas/PurchaseEventProduct'
+                          - '$ref': '#/components/schemas/PurchaseEventBalance'
+        401:
+          '$ref': '#/components/responses/InvalidCredentialsErrorResponse'        
+        403:
+          '$ref': '#/components/responses/NotAuthorizedErrorResponse'
+        404:
+          '$ref': '#/components/responses/NotFoundErrorResponse'
+  /api/v1/admin/users/{userId}/depositHistory: 
+    get: 
+      summary: Get deposit history of a user
+      operationId: getUserDepositHistory
+      tags:
+        - admin
+      security:
+        - adminAccessToken: []
+      parameters: 
+        - name: userId
+          description: Unique identifier of the user.
+          required: true
+          in: path
+          schema: 
+            type: integer
+            example: 324
+      responses: 
+        200: 
+          description: Request fulfilled successfully
+          content: 
+            application/json: 
+              schema: 
+                type: object
+                required: 
+                  - deposits
+                properties: 
+                  deposits: 
+                    type: array
+                    items: 
+                      '$ref': '#/components/schemas/DepositEventBase'
+        401:
+          '$ref': '#/components/responses/InvalidCredentialsErrorResponse'        
+        403:
+          '$ref': '#/components/responses/NotAuthorizedErrorResponse'
+        404:
+          '$ref': '#/components/responses/NotFoundErrorResponse'
+  /api/v1/admin/users/{userId}/depositHistory/{depositId}: 
+    get: 
+      summary: Get details of a specific deposit event
+      operationId: getUserDepositHistoryEvent
+      tags:
+        - admin
+      security:
+        - adminAccessToken: []
+      parameters: 
+        - name: userId
+          description: Unique identifier of the user.
+          required: true
+          in: path
+          schema: 
+            type: integer
+            example: 324
+        - name: depositId
+          description: Unique identifier of the deposit event.
+          required: true
+          in: path
+          schema: 
+            type: integer
+            example: 3015
+      responses: 
+        200: 
+          description: Request fulfilled successfully
+          content: 
+            application/json: 
+              schema: 
+                type: object
+                required: 
+                  - deposit
+                properties: 
+                  deposit: 
+                    '$ref': '#/components/schemas/DepositEventBase'
+        401:
+          '$ref': '#/components/responses/InvalidCredentialsErrorResponse'        
+        403:
+          '$ref': '#/components/responses/NotAuthorizedErrorResponse'
+        404:
+          '$ref': '#/components/responses/NotFoundErrorResponse'
+  /api/v1/admin/users/{userId}/changePassword: 
+    post: 
+      summary: Update the password of an user
+      operationId: changeUserPassword
+      tags:
+        - admin
+      security:
+        - adminAccessToken: []
+      parameters: 
+        - name: userId
+          description: Unique identifier of the user.
+          required: true
+          in: path
+          schema: 
+            type: integer
+            example: 324
+      responses: 
+        200: 
+          description: User's password changed successfully
+        400:
+          '$ref': '#/components/responses/BadRequestErrorResponse'
+        403:
+          '$ref': '#/components/responses/NotAuthorizedErrorResponse'
+        404:
+          '$ref': '#/components/responses/NotFoundErrorResponse'
+      requestBody: 
+        required: true
+        content: 
+          application/json: 
+            schema: 
+              type: object
+              required: 
+                - password
+              properties: 
+                password:
+                  type: string
+                  example: hunter2 
+  /api/v1/admin/users/{userId}/changeRole: 
+    post: 
+      summary: Update the role of a user
+      operationId: changeUserRole
+      tags:
+        - admin
+      security:
+        - adminAccessToken: []
+      parameters: 
+        - name: userId
+          description: Unique identifier of the user.
+          required: true
+          in: path
+          schema: 
+            type: integer
+            example: 324
+      responses: 
+        200: 
+          description: User's role changed successfully
+          content: 
+            application/json: 
+              schema: 
+                type: object
+                required: 
+                  - role
+                properties: 
+                  role: 
+                    '$ref': '#/components/schemas/Role'
+        400:
+          '$ref': '#/components/responses/BadRequestErrorResponse'
+        401:
+          '$ref': '#/components/responses/InvalidCredentialsErrorResponse'        
+        403:
+          '$ref': '#/components/responses/NotAuthorizedErrorResponse'
+        404:
+          '$ref': '#/components/responses/NotFoundErrorResponse'
+      requestBody: 
+        required: true
+        content: 
+          application/json: 
+            schema: 
+              type: object
+              required: 
+                - role
+              properties: 
+                role: 
+                  '$ref': '#/components/schemas/Role'
+  /api/v1/admin/utils/getUserByUsername/{username}:
+    get: 
+      summary: Get details of user with the given username
+      operationId: getUserByUsername
+      tags:
+        - normal
+      security:
+        - adminAccessToken: []
+      parameters: 
+        - name: username
+          description: Username of the user.
+          required: true
+          in: path
+          schema: 
+            type: string
+            example: user
+      responses: 
+        200: 
+          description: Request fulfilled successfully
+          content: 
+            application/json: 
+              schema: 
+                type: object
+                required: 
+                  - user
+                properties: 
+                  user:
+                    '$ref': '#/components/schemas/User'
+        401:
+          '$ref': '#/components/responses/NotAuthorizedErrorResponse'
+        404:
+          '$ref': '#/components/responses/NotFoundErrorResponse'
+  /api/v1/admin/utils/getUserByEmail/{email}:
+    get:
+      summary: Get details of user with the given email
+      operationId: getUserByEmail
+      tags:
+        - normal
+      security:
+        - adminAccessToken: []
+      parameters:
+        - name: email
+          description: Email of the user.
+          required: true
+          in: path
+          schema:
+            type: string
+            example: fuxi.student@helsinki.fi
+      responses:
+        200:
+          description: Request fulfilled successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - user
+                properties:
+                  user:
+                    '$ref': '#/components/schemas/User'
+        401:
+          '$ref': '#/components/responses/NotAuthorizedErrorResponse'
+        404:
+          '$ref': '#/components/responses/NotFoundErrorResponse'
+  /api/v1/admin/utils/getUserByFullName/{fullname}:
+    get:
+      summary: Get details of user with the given full name
+      operationId: getUserByFullName
+      tags:
+        - normal
+      security:
+        - adminAccessToken: []
+      parameters:
+        - name: fullname
+          description: Full name of the user.
+          required: true
+          in: path
+          schema:
+            type: string
+            example: Ella Esimerkki
+      responses:
+        200:
+          description: Request fulfilled successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - user
+                properties:
+                  user:
+                    '$ref': '#/components/schemas/User'
+        401:
+          '$ref': '#/components/responses/NotAuthorizedErrorResponse'
+        404:
+          '$ref': '#/components/responses/NotFoundErrorResponse'
+  /api/v1/admin/purchaseHistory: 
+    get: 
+      summary: Get combined purchase histories of all products and users
+      operationId: getPurchaseHistory
+      tags:
+        - admin
+      security:
+        - adminAccessToken: []
+      responses: 
+        200: 
+          description: Request fulfilled successfully
+          content: 
+            application/json: 
+              schema: 
+                type: object
+                required: 
+                  - purchases
+                properties: 
+                  purchases: 
+                    type: array
+                    items: 
+                      allOf:
+                          - '$ref': '#/components/schemas/PurchaseEventBase'
+                          - '$ref': '#/components/schemas/PurchaseEventProduct'
+                          - '$ref': '#/components/schemas/PurchaseEventUser'
+        401:
+          '$ref': '#/components/responses/InvalidCredentialsErrorResponse'        
+        403:
+          '$ref': '#/components/responses/NotAuthorizedErrorResponse'
+  /api/v1/admin/purchaseHistory/{purchaseId}: 
+    get: 
+      summary: Get details of a specific purchase event
+      operationId: getPurchaseEvent
+      tags:
+        - admin
+      security:
+        - adminAccessToken: []
+      parameters: 
+        - name: purchaseId
+          description: Unique identifier of the purchase event.
+          required: true
+          in: path
+          schema: 
+            type: integer
+            example: 3015
+      responses: 
+        200: 
+          description: Request fulfilled successfully
+          content: 
+            application/json: 
+              schema: 
+                type: object
+                required: 
+                  - purchase
+                properties: 
+                  purchase: 
+                    allOf:
+                      - '$ref': '#/components/schemas/PurchaseEventBase'
+                      - '$ref': '#/components/schemas/PurchaseEventProduct'
+                      - '$ref': '#/components/schemas/PurchaseEventUser'
+        401:
+          '$ref': '#/components/responses/InvalidCredentialsErrorResponse'        
+        403:
+          '$ref': '#/components/responses/NotAuthorizedErrorResponse'
+        404:
+          '$ref': '#/components/responses/NotFoundErrorResponse'
+  /api/v1/admin/depositHistory: 
+    get: 
+      summary: Get the combined deposit history of all users
+      operationId: getDepositHistory
+      tags:
+        - admin
+      security:
+        - adminAccessToken: []
+      responses: 
+        200: 
+          description: Request fulfilled successfully
+          content: 
+            application/json: 
+              schema: 
+                type: object
+                required: 
+                  - deposits
+                properties: 
+                  deposits: 
+                    type: array
+                    items: 
+                      allOf:
+                        - '$ref': '#/components/schemas/DepositEventBase'
+                        - '$ref': '#/components/schemas/DepositEventUser'
+        401:
+          '$ref': '#/components/responses/InvalidCredentialsErrorResponse'        
+        403:
+          '$ref': '#/components/responses/NotAuthorizedErrorResponse'
+  /api/v1/admin/depositHistory/{depositId}: 
+    get: 
+      summary: Get details of a specific deposit event
+      operationId: getDepositEvent
+      tags:
+        - admin
+      security:
+        - adminAccessToken: []
+      parameters: 
+        - name: depositId
+          description: Unique identifier of the deposit event.
+          required: true
+          in: path
+          schema: 
+            type: integer
+            example: 3015
+      responses: 
+        200: 
+          description: Request fulfilled successfully
+          content: 
+            application/json: 
+              schema: 
+                type: object
+                required: 
+                  - deposit
+                properties: 
+                  deposit: 
+                    allOf:
+                        - '$ref': '#/components/schemas/DepositEventBase'
+                        - '$ref': '#/components/schemas/DepositEventUser'
+        401:
+          '$ref': '#/components/responses/InvalidCredentialsErrorResponse'        
+        403:
+          '$ref': '#/components/responses/NotAuthorizedErrorResponse'
+        404:
+          '$ref': '#/components/responses/NotFoundErrorResponse'
+  /api/v1/admin/preferences:
+    get:
+      summary: Get list of preferences and their values
+      operationId: getPreferences
+      tags:
+        - admin
+      security:
+        - adminAccessToken: []
+      responses:
+        200:
+          description: Request fulfilled successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - preferences
+                properties:
+                  preferences:
+                    type: array
+                    items:
+                      '$ref': '#/components/schemas/Preference'
+        401:
+          '$ref': '#/components/responses/InvalidCredentialsErrorResponse'        
+        403:
+          '$ref': '#/components/responses/NotAuthorizedErrorResponse'
+  /api/v1/admin/preferences/{preferenceKey}:
+    get:
+      summary: Get the value of a preference
+      operationId: getPreference
+      tags:
+        - admin
+      security:
+        - adminAccessToken: []
+      parameters:
+        - name: preferenceKey
+          description: Key of the queried preference.
+          required: true
+          in: path
+          schema:
+            type: string
+            example: globalDefaultMargin
+      responses:
+        200:
+          description: Request fulfilled successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - preference
+                properties:
+                  preference:
+                    '$ref': '#/components/schemas/Preference'
+        401:
+          '$ref': '#/components/responses/InvalidCredentialsErrorResponse'        
+        403:
+          '$ref': '#/components/responses/NotAuthorizedErrorResponse'
+        404:
+          '$ref': '#/components/responses/NotFoundErrorResponse'
+    patch:
+      summary: Update the value of a preference
+      operationId: updatePreference
+      tags:
+        - admin
+      security:
+        - adminAccessToken: []
+      parameters:
+        - name: preferenceKey
+          description: Key of the preference to update.
+          required: true
+          in: path
+          schema:
+            type: string
+            example: globalDefaultMargin
+      responses:
+        200:
+          description: Preference's value updated successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - preference
+                properties:
+                  preference:
+                    '$ref': '#/components/schemas/Preference'
+        400:
+          '$ref': '#/components/responses/BadRequestErrorResponse'
+        401:
+          '$ref': '#/components/responses/InvalidCredentialsErrorResponse'        
+        403:
+          '$ref': '#/components/responses/NotAuthorizedErrorResponse'
+        404:
+          '$ref': '#/components/responses/NotFoundErrorResponse'
+  /api/v1/email/temp_password:
+    post:
+      summary: Generate and send a temporary password
+      description: |
+        Generates a temporary password for the user associated with the provided email address
+        and sends it to that address. The temporary password is valid for 15 minutes.
+      operationId: createTempPassword
+      tags:
+        - normal
+      security:
+        - normalAccessToken: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - userId
+              properties:
+                userId:
+                  type: integer
+                  example: 415
+                  description: Opaque unique identifier of the user.
+      responses:
+        201:
+          description: Temporary password generated and sent to the provided email address successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - message
+                properties:
+                  message:
+                    type: string
+                    example: Temporary password created successfully.
+        400:
+          '$ref': '#/components/responses/BadRequestErrorResponse'
+        401:
+          '$ref': '#/components/responses/InvalidCredentialsErrorResponse'
+        403:
+          '$ref': '#/components/responses/NotAuthorizedErrorResponse'
+        404:
+          '$ref': '#/components/responses/NotFoundErrorResponse'
