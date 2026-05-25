@@ -6,8 +6,6 @@ use axum::{
 use serde::Serialize;
 use thiserror::Error;
 
-use crate::middleware::auth::AuthError;
-
 #[derive(Error, Debug)]
 pub enum AppError {
     #[error("Resource not found")]
@@ -73,19 +71,6 @@ impl IntoResponse for AppError {
 impl From<jsonwebtoken::errors::Error> for AppError {
     fn from(error: jsonwebtoken::errors::Error) -> Self {
         AppError::Internal(anyhow::anyhow!(error))
-    }
-}
-
-impl From<AuthError> for AppError {
-    fn from(error: AuthError) -> Self {
-        match error {
-            AuthError::Forbidden => AppError::Forbidden,
-            AuthError::BadRequest => AppError::BadRequest,
-            AuthError::MissingHeader
-            | AuthError::InvalidHeaderFormat
-            | AuthError::InvalidToken(_) => AppError::InvalidToken,
-            AuthError::TokenExpired => AppError::Unauthorized,
-        }
     }
 }
 

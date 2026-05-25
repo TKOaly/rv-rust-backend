@@ -1,4 +1,4 @@
-use crate::{config::AppConfig, error::Result};
+use crate::{config::AppConfig, error::{AppError, Result}};
 use axum::{
     body::Body,
     extract::{Request, State},
@@ -16,22 +16,6 @@ struct Claims {
     pub sub: String,
     pub exp: usize,
     pub iat: usize,
-}
-
-#[derive(Debug, Error)]
-pub enum AuthError {
-    #[error("Missing Authorization header")]
-    MissingHeader,
-    #[error("Invalid Authorization header format (expected: Bearer <token>)")]
-    InvalidHeaderFormat,
-    #[error("Token has expired")]
-    TokenExpired,
-    #[error("Invalid token: {0}")]
-    InvalidToken(String),
-    #[error("Insufficient permissions")]
-    Forbidden,
-    #[error("Bad request")]
-    BadRequest,
 }
 
 #[derive(Debug, Clone)]
@@ -65,19 +49,19 @@ pub fn validate_token(token: &str, secret: &str) -> Result<Claims> {
     )
     .map(|d| d.claims)
     .map_err(|e| match e.kind() {
-        jsonwebtoken::errors::ErrorKind::ExpiredSignature => AuthError::TokenExpired.into(),
-        _ => AuthError::InvalidToken(e.to_string()).into(),
+        jsonwebtoken::errors::ErrorKind::ExpiredSignature => AppError::InvalidToken,
+        _ => AppError::InvalidToken,
     })
 }
 
 fn extract_bearer_token(headers: &HeaderMap) -> Result<&str> {
     headers
         .get("Authorization")
-        .ok_or(AuthError::MissingHeader)?
+        .ok_or(AppError::BadRequest)?
         .to_str()
-        .map_err(|_| AuthError::InvalidHeaderFormat)?
+        .map_err(|_| AppError::BadRequest)?
         .strip_prefix("Bearer ")
-        .ok_or_else(|| AuthError::InvalidHeaderFormat.into())
+        .ok_or_else(|| AppError::BadRequest)
 }
 
 pub async fn jwt_middleware(
@@ -110,7 +94,7 @@ pub async fn require_rv_terminal(
 
     let bytes = axum::body::to_bytes(body, usize::MAX)
         .await
-        .map_err(|_| AuthError::BadRequest)?;
+        .map_err(|_| AppError::BadRequest)?;
 
     let logged_in_from_rv_terminal = serde_json::from_slice::<BodyWithRvTerminalSecret>(&bytes)
         .ok()
@@ -119,7 +103,7 @@ pub async fn require_rv_terminal(
         .unwrap_or(false);
 
     if !logged_in_from_rv_terminal {
-        return Err(AuthError::Forbidden.into());
+        return Err(AppError::Forbidden);
     }
 
     let req = Request::from_parts(parts, Body::from(bytes));
