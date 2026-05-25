@@ -3,8 +3,6 @@
 pub use super::action::Entity as Action;
 pub use super::boxhistory::Entity as Boxhistory;
 pub use super::itemhistory::Entity as Itemhistory;
-pub use super::knex_migrations::Entity as KnexMigrations;
-pub use super::knex_migrations_lock::Entity as KnexMigrationsLock;
 pub use super::personhist::Entity as Personhist;
 pub use super::preferences::Entity as Preferences;
 pub use super::price::Entity as Price;
