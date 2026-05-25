@@ -74,4 +74,10 @@ impl From<jsonwebtoken::errors::Error> for AppError {
     }
 }
 
+impl From<sea_orm::error::DbErr> for AppError {
+    fn from(error: sea_orm::error::DbErr) -> Self {
+        AppError::Internal(anyhow::anyhow!(error))
+    }
+}
+
 pub type Result<T> = std::result::Result<T, AppError>;
