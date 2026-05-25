@@ -12,4 +12,4 @@ pub use super::rvbox::Entity as Rvbox;
 pub use super::rvitem::Entity as Rvitem;
 pub use super::rvperson::Entity as Rvperson;
 pub use super::saldohistory::Entity as Saldohistory;
-pub use super::temppassword::Entity as Temppassword;
+pub use super::temppassword::Entity as TempPassword;
