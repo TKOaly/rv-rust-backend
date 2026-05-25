@@ -130,7 +130,7 @@ pub async fn require_role(
         }
     };
 
-    let user = db::user::get_user_by_user_id(auth.user_id.parse()?, &state.database).await?;
+    let user = db::user::find_user_by_id(auth.user_id.parse()?, &state.database).await?;
 
     if user.role != role {
         return Err(AppError::Forbidden);
@@ -153,7 +153,7 @@ pub async fn require_active_account(
         }
     };
 
-    let user = db::user::get_user_by_user_id(auth.user_id.parse()?, &state.database).await?;
+    let user = db::user::find_user_by_id(auth.user_id.parse()?, &state.database).await?;
 
     if user.role != Role::Inactive {
         return Err(AppError::Forbidden);

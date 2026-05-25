@@ -57,7 +57,7 @@ pub struct User {
     pub rfid_hash: Option<String>,
 }
 
-pub async fn get_user_by_user_id(user_id: i32, db: &DatabaseConnection) -> Result<User> {
+pub async fn find_user_by_id(user_id: i32, db: &DatabaseConnection) -> Result<User> {
     let cutoff = Utc::now() - Duration::minutes(15);
 
     let (user, temp_password) = Rvperson::find_by_id(user_id)
@@ -70,8 +70,43 @@ pub async fn get_user_by_user_id(user_id: i32, db: &DatabaseConnection) -> Resul
         .one(db)
         .await?
         .ok_or(AppError::Internal(anyhow::format_err!(
-            "Cannot find user by id {}",
+            "Cannot find user by id {} from database",
             user_id
+        )))?;
+
+    Ok(User {
+        id: user.userid,
+        username: user.name,
+        realname: user.realname.unwrap_or_default(),
+        email: user.univident,
+        role: user.roleid.into(),
+        saldo: user.saldo,
+        privacy_level: user.privacy_level.into(),
+        password_hash: user.pass,
+        rfid_hash: user.rfid,
+        temp_password_hash: temp_password.map(|m| m.temp_password),
+    })
+}
+
+pub async fn find_user_by_username(username: &str, db: &DatabaseConnection) -> Result<User> {
+    let cutoff = Utc::now() - Duration::minutes(15);
+
+    let (user, temp_password) = Rvperson::find()
+        .find_also_related(TempPassword)
+        .filter(
+            Condition::all()
+                .add(rvperson::Column::Name.eq(username))
+                .add(
+                    Condition::any()
+                        .add(temppassword::Column::CreatedAt.gte(cutoff))
+                        .add(temppassword::Column::Userid.is_null()),
+                ),
+        )
+        .one(db)
+        .await?
+        .ok_or(AppError::Internal(anyhow::format_err!(
+            "Cannot find user by username {} from database",
+            username
         )))?;
 
     Ok(User {
