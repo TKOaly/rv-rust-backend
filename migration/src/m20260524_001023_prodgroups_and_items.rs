@@ -83,24 +83,26 @@ impl MigrationTrait for Migration {
     }
 
     async fn down(&self, manager: &SchemaManager) -> Result<(), DbErr> {
-        let db = manager.get_connection();
-        db.execute_unprepared(r#"DROP VIEW IF EXISTS "RVITEM""#)
-            .await?;
-        db.execute_unprepared(r#"DROP VIEW IF EXISTS "PRODGROUP""#)
-            .await?;
+        if std::env::var("ENVIRONMENT").unwrap() != "production" {
+            let db = manager.get_connection();
+            db.execute_unprepared(r#"DROP VIEW IF EXISTS "RVITEM""#)
+                .await?;
+            db.execute_unprepared(r#"DROP VIEW IF EXISTS "PRODGROUP""#)
+                .await?;
 
-        manager
-            .drop_table(Table::drop().table(RvitemAll::Table).if_exists().to_owned())
-            .await?;
+            manager
+                .drop_table(Table::drop().table(RvitemAll::Table).if_exists().to_owned())
+                .await?;
 
-        manager
-            .drop_table(
-                Table::drop()
-                    .table(ProdgroupAll::Table)
-                    .if_exists()
-                    .to_owned(),
-            )
-            .await?;
+            manager
+                .drop_table(
+                    Table::drop()
+                        .table(ProdgroupAll::Table)
+                        .if_exists()
+                        .to_owned(),
+                )
+                .await?;
+        }
 
         Ok(())
     }
