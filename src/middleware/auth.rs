@@ -1,5 +1,6 @@
 use crate::{config::AppConfig, error::Result};
 use axum::{
+    body::Body,
     extract::{Request, State},
     http::HeaderMap,
     middleware::Next,
@@ -29,6 +30,8 @@ pub enum AuthError {
     InvalidToken(String),
     #[error("Insufficient permissions")]
     Forbidden,
+    #[error("Bad request")]
+    BadRequest,
 }
 
 #[derive(Debug, Clone)]
@@ -92,3 +95,34 @@ pub async fn jwt_middleware(
     Ok(next.run(req).await)
 }
 
+#[derive(Deserialize)]
+struct BodyWithRvTerminalSecret {
+    #[serde(rename = "rvTerminalSecret")]
+    rv_terminal_secret: Option<String>,
+}
+
+pub async fn require_rv_terminal(
+    State(config): State<AppConfig>,
+    req: Request,
+    next: Next,
+) -> Result<Response> {
+    let (parts, body) = req.into_parts();
+
+    let bytes = axum::body::to_bytes(body, usize::MAX)
+        .await
+        .map_err(|_| AuthError::BadRequest)?;
+
+    let logged_in_from_rv_terminal = serde_json::from_slice::<BodyWithRvTerminalSecret>(&bytes)
+        .ok()
+        .and_then(|body| body.rv_terminal_secret)
+        .map(|secret| secret == config.rv_terminal_secret)
+        .unwrap_or(false);
+
+    if !logged_in_from_rv_terminal {
+        return Err(AuthError::Forbidden.into());
+    }
+
+    let req = Request::from_parts(parts, Body::from(bytes));
+
+    Ok(next.run(req).await)
+}

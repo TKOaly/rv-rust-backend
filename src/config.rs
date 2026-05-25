@@ -6,7 +6,7 @@ pub struct AppConfig {
     pub database_url: String,
     pub jwt_secret: String,
     pub jwt_expiry: i64,
-    pub rvterminal_secret: String,
+    pub rv_terminal_secret: String,
 }
 
 impl AppConfig {
@@ -24,7 +24,7 @@ impl AppConfig {
                 .ok()
                 .and_then(|p| p.parse().ok())
                 .unwrap_or(3600),
-            rvterminal_secret: std::env::var("RVTERMINAL_SECRET")
+            rv_terminal_secret: std::env::var("RVTERMINAL_SECRET")
                 .unwrap_or_else(|_| "unsecure".to_owned()),
         }
     }
