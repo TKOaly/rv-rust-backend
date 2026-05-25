@@ -1,4 +1,9 @@
-use crate::{config::AppConfig, error::{AppError, Result}};
+use crate::{
+    config::AppConfig,
+    db::{self, user::Role},
+    error::{AppError, Result},
+    state::AppState,
+};
 use axum::{
     body::Body,
     extract::{Request, State},
@@ -9,7 +14,6 @@ use axum::{
 use chrono::{Duration, Utc};
 use jsonwebtoken::{DecodingKey, EncodingKey, Header, Validation, decode, encode};
 use serde::{Deserialize, Serialize};
-use thiserror::Error;
 
 #[derive(Debug, Serialize, Deserialize)]
 struct Claims {
@@ -107,6 +111,53 @@ pub async fn require_rv_terminal(
     }
 
     let req = Request::from_parts(parts, Body::from(bytes));
+
+    Ok(next.run(req).await)
+}
+
+pub async fn require_role(
+    State(state): State<AppState>,
+    role: Role,
+    req: Request,
+    next: Next,
+) -> Result<Response> {
+    let auth = match req.extensions().get::<AuthUser>() {
+        Some(a) => a,
+        None => {
+            return Err(AppError::Internal(anyhow::format_err!(
+                "Jwt middleware is not called"
+            )));
+        }
+    };
+
+    let user = db::user::get_user_by_user_id(auth.user_id.parse()?, &state.database).await?;
+
+    if user.role != role {
+        return Err(AppError::Forbidden);
+    }
+
+    Ok(next.run(req).await)
+}
+
+pub async fn require_active_account(
+    State(state): State<AppState>,
+    req: Request,
+    next: Next,
+) -> Result<Response> {
+    let auth = match req.extensions().get::<AuthUser>() {
+        Some(a) => a,
+        None => {
+            return Err(AppError::Internal(anyhow::format_err!(
+                "Jwt middleware is not called"
+            )));
+        }
+    };
+
+    let user = db::user::get_user_by_user_id(auth.user_id.parse()?, &state.database).await?;
+
+    if user.role != Role::Inactive {
+        return Err(AppError::Forbidden);
+    }
 
     Ok(next.run(req).await)
 }

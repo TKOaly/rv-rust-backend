@@ -9,7 +9,7 @@ use chrono::{Duration, Utc};
 use sea_orm::{ColumnTrait, Condition, DatabaseConnection, EntityTrait, QueryFilter};
 use serde::Serialize;
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, Eq, PartialEq)]
 pub enum Role {
     Admin,
     User,

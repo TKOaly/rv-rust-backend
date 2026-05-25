@@ -80,4 +80,10 @@ impl From<sea_orm::error::DbErr> for AppError {
     }
 }
 
+impl From<std::num::ParseIntError> for AppError {
+    fn from(error: std::num::ParseIntError) -> Self {
+        AppError::Internal(anyhow::anyhow!(error))
+    }
+}
+
 pub type Result<T> = std::result::Result<T, AppError>;
