@@ -109,13 +109,15 @@ impl MigrationTrait for Migration {
     }
 
     async fn down(&self, manager: &SchemaManager) -> Result<(), DbErr> {
-        manager
-            .drop_table(Table::drop().table(Rvperson::Table).if_exists().to_owned())
-            .await?;
+        if std::env::var("ENVIRONMENT").unwrap() != "production" {
+            manager
+                .drop_table(Table::drop().table(Rvperson::Table).if_exists().to_owned())
+                .await?;
 
-        manager
-            .drop_table(Table::drop().table(Role::Table).if_exists().to_owned())
-            .await?;
+            manager
+                .drop_table(Table::drop().table(Role::Table).if_exists().to_owned())
+                .await?;
+        }
 
         Ok(())
     }
