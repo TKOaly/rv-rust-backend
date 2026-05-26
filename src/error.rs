@@ -86,4 +86,16 @@ impl From<std::num::ParseIntError> for AppError {
     }
 }
 
+impl From<bcrypt::BcryptError> for AppError {
+    fn from(error: bcrypt::BcryptError) -> Self {
+        AppError::Internal(anyhow::anyhow!(error))
+    }
+}
+
+impl From<hex::FromHexError> for AppError {
+    fn from(error: hex::FromHexError) -> Self {
+        AppError::Internal(anyhow::anyhow!(error))
+    }
+}
+
 pub type Result<T> = std::result::Result<T, AppError>;
