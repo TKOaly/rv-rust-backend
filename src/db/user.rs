@@ -60,7 +60,7 @@ impl From<i32> for PrivacyLevel {
 pub struct User {
     pub id: i32,
     pub username: String,
-    pub realname: String,
+    pub full_name: String,
     pub email: String,
     pub role: Role,
     pub saldo: i32,
@@ -70,10 +70,27 @@ pub struct User {
     pub rfid_hash: Option<String>,
 }
 
+impl From<(rvperson::Model, Option<temppassword::Model>)> for User {
+    fn from((user, temp_password): (rvperson::Model, Option<temppassword::Model>)) -> Self {
+        Self {
+            id: user.userid,
+            username: user.name,
+            full_name: user.realname.unwrap_or("No name".to_string()),
+            email: user.univident,
+            role: user.roleid.into(),
+            saldo: user.saldo,
+            privacy_level: user.privacy_level.into(),
+            password_hash: user.pass,
+            rfid_hash: user.rfid,
+            temp_password_hash: temp_password.map(|m| m.temp_password),
+        }
+    }
+}
+
 pub async fn find_user_by_id(user_id: i32, db: &DatabaseConnection) -> Result<User> {
     let cutoff = Utc::now() - Duration::minutes(15);
 
-    let (user, temp_password) = Rvperson::find_by_id(user_id)
+    let result = Rvperson::find_by_id(user_id)
         .find_also_related(TempPassword)
         .filter(
             Condition::any()
@@ -87,24 +104,13 @@ pub async fn find_user_by_id(user_id: i32, db: &DatabaseConnection) -> Result<Us
             user_id
         )))?;
 
-    Ok(User {
-        id: user.userid,
-        username: user.name,
-        realname: user.realname.unwrap_or_default(),
-        email: user.univident,
-        role: user.roleid.into(),
-        saldo: user.saldo,
-        privacy_level: user.privacy_level.into(),
-        password_hash: user.pass,
-        rfid_hash: user.rfid,
-        temp_password_hash: temp_password.map(|m| m.temp_password),
-    })
+    Ok(result.into())
 }
 
 pub async fn find_user_by_username(username: &str, db: &DatabaseConnection) -> Result<User> {
     let cutoff = Utc::now() - Duration::minutes(15);
 
-    let (user, temp_password) = Rvperson::find()
+    let result = Rvperson::find()
         .find_also_related(TempPassword)
         .filter(
             Condition::all()
@@ -122,18 +128,7 @@ pub async fn find_user_by_username(username: &str, db: &DatabaseConnection) -> R
             username
         )))?;
 
-    Ok(User {
-        id: user.userid,
-        username: user.name,
-        realname: user.realname.unwrap_or_default(),
-        email: user.univident,
-        role: user.roleid.into(),
-        saldo: user.saldo,
-        privacy_level: user.privacy_level.into(),
-        password_hash: user.pass,
-        rfid_hash: user.rfid,
-        temp_password_hash: temp_password.map(|m| m.temp_password),
-    })
+    Ok(result.into())
 }
 
 fn old_rfid_hash(rfid_hex: &str) -> Result<String> {
@@ -164,7 +159,7 @@ async fn migrate_rfid_hash(rfid: &str, db: &DatabaseConnection) -> Result<Option
     let cutoff = Utc::now() - Duration::minutes(15);
     let rfid_hash = old_rfid_hash(rfid)?;
 
-    let user = Rvperson::find()
+    let result = Rvperson::find()
         .find_also_related(TempPassword)
         .filter(
             Condition::all()
@@ -178,22 +173,8 @@ async fn migrate_rfid_hash(rfid: &str, db: &DatabaseConnection) -> Result<Option
         .one(db)
         .await?;
 
-    match user {
-        Some((user, temp_password)) => {
-            tracing::info!("'Migrated user: {} rfid has to use bcrypt", user.name);
-            Ok(Some(User {
-                id: user.userid,
-                username: user.name,
-                realname: user.realname.unwrap_or_default(),
-                email: user.univident,
-                role: user.roleid.into(),
-                saldo: user.saldo,
-                privacy_level: user.privacy_level.into(),
-                password_hash: user.pass,
-                rfid_hash: user.rfid,
-                temp_password_hash: temp_password.map(|m| m.temp_password),
-            }))
-        }
+    match result {
+        Some(result) => Ok(Some(result.into())),
         None => Ok(None),
     }
 }
@@ -221,18 +202,7 @@ pub async fn find_by_rfid(
         .await?;
 
     match user {
-        Some((user, temp_password)) => Ok(Some(User {
-            id: user.userid,
-            username: user.name,
-            realname: user.realname.unwrap_or_default(),
-            email: user.univident,
-            role: user.roleid.into(),
-            saldo: user.saldo,
-            privacy_level: user.privacy_level.into(),
-            password_hash: user.pass,
-            rfid_hash: user.rfid,
-            temp_password_hash: temp_password.map(|m| m.temp_password),
-        })),
+        Some(user) => return Ok(Some(user.into())),
         None => migrate_rfid_hash(rfid, db).await,
     }
 }
