@@ -18,6 +18,7 @@ use serde::{Deserialize, Serialize};
 #[derive(Debug, Serialize, Deserialize)]
 struct Claims {
     pub sub: String,
+    pub logged_in_from_rv_terminal: bool,
     pub exp: usize,
     pub iat: usize,
 }
@@ -25,15 +26,22 @@ struct Claims {
 #[derive(Debug, Clone)]
 pub struct AuthUser {
     pub user_id: String,
+    pub logged_in_from_rv_terminal: bool,
 }
 
-pub fn generate_token(user_id: usize, secret: String, expiry: i64) -> Result<String> {
+pub fn generate_token(
+    user_id: i32,
+    logged_in_from_rv_terminal: bool,
+    secret: &str,
+    expiry: i64,
+) -> Result<String> {
     let now = Utc::now();
     let exp = (now + Duration::seconds(expiry)).timestamp() as usize;
     let iat = now.timestamp() as usize;
 
     let claims = Claims {
         sub: user_id.to_string(),
+        logged_in_from_rv_terminal,
         exp,
         iat,
     };
@@ -78,6 +86,7 @@ pub async fn jwt_middleware(
 
     req.extensions_mut().insert(AuthUser {
         user_id: claims.sub,
+        logged_in_from_rv_terminal: claims.logged_in_from_rv_terminal,
     });
 
     Ok(next.run(req).await)
@@ -133,7 +142,7 @@ pub async fn require_role(
     let user = db::user::find_user_by_id(auth.user_id.parse()?, &state.database).await?;
 
     if user.role != role {
-        return Err(AppError::Forbidden);
+        return Err(AppError::NotAuthorized);
     }
 
     Ok(next.run(req).await)
@@ -156,7 +165,7 @@ pub async fn require_active_account(
     let user = db::user::find_user_by_id(auth.user_id.parse()?, &state.database).await?;
 
     if user.role != Role::Inactive {
-        return Err(AppError::Forbidden);
+        return Err(AppError::NotAuthorized);
     }
 
     Ok(next.run(req).await)
