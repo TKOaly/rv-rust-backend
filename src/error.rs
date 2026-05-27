@@ -10,18 +10,16 @@ use thiserror::Error;
 pub enum AppError {
     #[error("Resource not found")]
     NotFound,
-    #[error("Validation error: {0}")]
-    Validation(String),
-    #[error("Unauthorized")]
-    Unauthorized,
+    #[error("Not authorized")]
+    NotAuthorized,
     #[error("Forbidden")]
     Forbidden,
+    #[error("Invalid credentials: {0}")]
+    InvalidCredentials(String),
     #[error("Invalid token")]
     InvalidToken,
     #[error("Bad request")]
     BadRequest,
-    #[error("Conflict: {0}")]
-    Conflict(String),
     #[error("Internal server error")]
     Internal(#[from] anyhow::Error),
 }
@@ -38,16 +36,19 @@ impl IntoResponse for AppError {
     fn into_response(self) -> Response {
         let (status, error_type, message) = match &self {
             AppError::NotFound => (StatusCode::NOT_FOUND, "not_found", self.to_string()),
-            AppError::Validation(msg) => (StatusCode::BAD_REQUEST, "validation_error", msg.clone()),
-            AppError::Unauthorized => (StatusCode::UNAUTHORIZED, "unauthorized", self.to_string()),
+            AppError::NotAuthorized => (StatusCode::FORBIDDEN, "not_authorized", self.to_string()),
             AppError::Forbidden => (StatusCode::FORBIDDEN, "forbidden", self.to_string()),
+            AppError::InvalidCredentials(msg) => (
+                StatusCode::UNAUTHORIZED,
+                "invalid_credentials",
+                msg.to_string(),
+            ),
             AppError::InvalidToken => (
                 StatusCode::UNAUTHORIZED,
                 "invalid_token",
                 "Invalid authorization token".to_string(),
             ),
             AppError::BadRequest => (StatusCode::BAD_REQUEST, "bad_request", self.to_string()),
-            AppError::Conflict(msg) => (StatusCode::CONFLICT, "conflict", msg.clone()),
             AppError::Internal(e) => {
                 tracing::error!(error = ?e, "Internal server error");
                 (
@@ -82,6 +83,18 @@ impl From<sea_orm::error::DbErr> for AppError {
 
 impl From<std::num::ParseIntError> for AppError {
     fn from(error: std::num::ParseIntError) -> Self {
+        AppError::Internal(anyhow::anyhow!(error))
+    }
+}
+
+impl From<bcrypt::BcryptError> for AppError {
+    fn from(error: bcrypt::BcryptError) -> Self {
+        AppError::Internal(anyhow::anyhow!(error))
+    }
+}
+
+impl From<hex::FromHexError> for AppError {
+    fn from(error: hex::FromHexError) -> Self {
         AppError::Internal(anyhow::anyhow!(error))
     }
 }
