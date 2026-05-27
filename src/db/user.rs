@@ -8,7 +8,10 @@ use crate::{
 };
 use bcrypt;
 use chrono::{Duration, Utc};
-use sea_orm::{ColumnTrait, Condition, DatabaseConnection, EntityTrait, QueryFilter};
+use sea_orm::{
+    ActiveModelTrait, ActiveValue::Set, ColumnTrait, Condition, DatabaseConnection, EntityTrait,
+    QueryFilter,
+};
 use serde::Serialize;
 use sha2::{Digest, Sha256};
 
@@ -29,6 +32,16 @@ impl From<i32> for Role {
     }
 }
 
+impl From<Role> for i32 {
+    fn from(role: Role) -> Self {
+        match role {
+            Role::Admin => 1,
+            Role::User => 2,
+            Role::Inactive => 7,
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy)]
 pub enum PrivacyLevel {
     NoLimits,
@@ -36,7 +49,7 @@ pub enum PrivacyLevel {
     HideAll,
 }
 
-impl From<PrivacyLevel> for u8 {
+impl From<PrivacyLevel> for i32 {
     fn from(value: PrivacyLevel) -> Self {
         match value {
             PrivacyLevel::NoLimits => 0,
@@ -85,6 +98,34 @@ impl From<(rvperson::Model, Option<temppassword::Model>)> for User {
             temp_password_hash: temp_password.map(|m| m.temp_password),
         }
     }
+}
+
+impl From<rvperson::Model> for User {
+    fn from(user: rvperson::Model) -> Self {
+        Self {
+            id: user.userid,
+            username: user.name,
+            full_name: user.realname.unwrap_or("No name".to_string()),
+            email: user.univident,
+            role: user.roleid.into(),
+            saldo: user.saldo,
+            privacy_level: user.privacy_level.into(),
+            password_hash: user.pass,
+            rfid_hash: user.rfid,
+            temp_password_hash: None,
+        }
+    }
+}
+
+pub struct UpdateUser {
+    pub username: Option<String>,
+    pub full_name: Option<String>,
+    pub email: Option<String>,
+    pub role: Option<Role>,
+    pub saldo: Option<i32>,
+    pub privacy_level: Option<PrivacyLevel>,
+    pub password: Option<String>,
+    pub rfid: Option<String>,
 }
 
 pub async fn find_user_by_id(user_id: i32, db: &DatabaseConnection) -> Result<User> {
@@ -210,4 +251,61 @@ pub async fn find_by_rfid(
 pub async fn remove_temp_password(user_id: i32, db: &DatabaseConnection) -> Result<()> {
     let _ = TempPassword::delete_by_id(user_id).exec(db).await?;
     Ok(())
+}
+
+pub async fn update_user(
+    user_id: i32,
+    data: UpdateUser,
+    config: &AppConfig,
+    db: &DatabaseConnection,
+) -> Result<User> {
+    let user = Rvperson::find_by_id(user_id).one(db).await?;
+
+    let mut user: rvperson::ActiveModel = match user {
+        Some(u) => u.into(),
+        None => {
+            return Err(AppError::Internal(anyhow::format_err!(
+                "Cannot find user by user_id {}",
+                user_id
+            )));
+        }
+    };
+
+    if let Some(username) = data.username {
+        user.name = Set(username)
+    }
+
+    if let Some(full_name) = data.full_name {
+        user.realname = Set(Some(full_name))
+    }
+
+    if let Some(email) = data.email {
+        user.univident = Set(email)
+    }
+
+    if let Some(role) = data.role {
+        user.roleid = Set(role.into())
+    }
+
+    if let Some(saldo) = data.saldo {
+        user.saldo = Set(saldo)
+    }
+
+    if let Some(privacy_level) = data.privacy_level {
+        user.privacy_level = Set(privacy_level.into())
+    }
+
+    if let Some(password) = data.password {
+        let hash = bcrypt::hash(password, 11)?;
+        user.pass = Set(hash)
+    }
+
+    if let Some(rfid) = data.rfid {
+        let hash = new_rfid_hash(&rfid, config)?;
+        user.rfid = Set(Some(hash));
+    }
+
+    let user = user.update(db).await?;
+
+    Ok(user.into())
 }
