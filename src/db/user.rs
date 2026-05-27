@@ -150,7 +150,7 @@ fn new_rfid_hash(rfid_hex: &str, config: &AppConfig) -> Result<String> {
     Ok(hash.format_for_version(bcrypt::Version::TwoB))
 }
 
-async fn migrate_rfid_hash(rfid: &str, db: &DatabaseConnection) -> Result<User> {
+async fn migrate_rfid_hash(rfid: &str, db: &DatabaseConnection) -> Result<Option<User>> {
     let cutoff = Utc::now() - Duration::minutes(15);
     let rfid_hash = old_rfid_hash(rfid)?;
 
@@ -171,7 +171,7 @@ async fn migrate_rfid_hash(rfid: &str, db: &DatabaseConnection) -> Result<User> 
     match user {
         Some((user, temp_password)) => {
             tracing::info!("'Migrated user: {} rfid has to use bcrypt", user.name);
-            Ok(User {
+            Ok(Some(User {
                 id: user.userid,
                 username: user.name,
                 realname: user.realname.unwrap_or_default(),
@@ -182,13 +182,17 @@ async fn migrate_rfid_hash(rfid: &str, db: &DatabaseConnection) -> Result<User> 
                 password_hash: user.pass,
                 rfid_hash: user.rfid,
                 temp_password_hash: temp_password.map(|m| m.temp_password),
-            })
+            }))
         }
-        None => Err(AppError::NotFound),
+        None => Ok(None),
     }
 }
 
-pub async fn find_by_rfid(rfid: &str, config: &AppConfig, db: &DatabaseConnection) -> Result<User> {
+pub async fn find_by_rfid(
+    rfid: &str,
+    config: &AppConfig,
+    db: &DatabaseConnection,
+) -> Result<Option<User>> {
     let cutoff = Utc::now() - Duration::minutes(15);
     let rfid_hash = new_rfid_hash(rfid, config)?;
 
@@ -207,7 +211,7 @@ pub async fn find_by_rfid(rfid: &str, config: &AppConfig, db: &DatabaseConnectio
         .await?;
 
     match user {
-        Some((user, temp_password)) => Ok(User {
+        Some((user, temp_password)) => Ok(Some(User {
             id: user.userid,
             username: user.name,
             realname: user.realname.unwrap_or_default(),
@@ -218,7 +222,12 @@ pub async fn find_by_rfid(rfid: &str, config: &AppConfig, db: &DatabaseConnectio
             password_hash: user.pass,
             rfid_hash: user.rfid,
             temp_password_hash: temp_password.map(|m| m.temp_password),
-        }),
+        })),
         None => migrate_rfid_hash(rfid, db).await,
     }
+}
+
+pub async fn remove_temp_password(user_id: i32, db: &DatabaseConnection) -> Result<()> {
+    let _ = TempPassword::delete_by_id(user_id).exec(db).await?;
+    Ok(())
 }

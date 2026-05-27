@@ -1,11 +1,20 @@
 use crate::config::AppConfig;
 use crate::state::AppState;
+use crate::routes::auth;
+
 use axum::Router;
 use tokio::net::TcpListener;
 use tracing_subscriber::{EnvFilter, fmt};
 
+
 pub async fn build_router(state: AppState) -> Router {
-    Router::new().with_state(state)
+    let unguarded = Router::new()
+        .nest("/api/v2/authenticate", auth::v2::router())
+        .nest("/api/v1/authenticate", auth::v1::router());
+
+    Router::new()
+        .merge(unguarded)
+        .with_state(state)
 }
 
 pub async fn create_app() -> (Router, TcpListener) {
