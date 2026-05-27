@@ -17,7 +17,7 @@ struct LoginResponseV2 {
     password_reset: bool,
 }
 
-pub fn router() -> Router<AppState> {
+pub fn routes() -> Router<AppState> {
     Router::new()
         .route("/", post(login))
         .route("/rfid", post(rfid))
