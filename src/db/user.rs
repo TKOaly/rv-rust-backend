@@ -36,6 +36,16 @@ pub enum PrivacyLevel {
     HideAll,
 }
 
+impl From<PrivacyLevel> for u8 {
+    fn from(value: PrivacyLevel) -> Self {
+        match value {
+            PrivacyLevel::NoLimits => 0,
+            PrivacyLevel::HideUsername => 1,
+            PrivacyLevel::HideAll => 2,
+        }
+    }
+}
+
 impl From<i32> for PrivacyLevel {
     fn from(privacy_level: i32) -> Self {
         match privacy_level {

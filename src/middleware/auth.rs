@@ -25,7 +25,7 @@ struct Claims {
 
 #[derive(Debug, Clone)]
 pub struct AuthUser {
-    pub user_id: String,
+    pub user_id: i32,
     pub logged_in_from_rv_terminal: bool,
 }
 
@@ -85,7 +85,7 @@ pub async fn jwt_middleware(
     let claims = validate_token(token, &config.jwt_secret)?;
 
     req.extensions_mut().insert(AuthUser {
-        user_id: claims.sub,
+        user_id: claims.sub.parse()?,
         logged_in_from_rv_terminal: claims.logged_in_from_rv_terminal,
     });
 
@@ -139,7 +139,7 @@ pub async fn require_role(
         }
     };
 
-    let user = db::user::find_user_by_id(auth.user_id.parse()?, &state.database).await?;
+    let user = db::user::find_user_by_id(auth.user_id, &state.database).await?;
 
     if user.role != role {
         return Err(AppError::NotAuthorized);
@@ -162,7 +162,7 @@ pub async fn require_active_account(
         }
     };
 
-    let user = db::user::find_user_by_id(auth.user_id.parse()?, &state.database).await?;
+    let user = db::user::find_user_by_id(auth.user_id, &state.database).await?;
 
     if user.role != Role::Inactive {
         return Err(AppError::NotAuthorized);
