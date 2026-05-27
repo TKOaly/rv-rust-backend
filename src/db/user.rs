@@ -196,26 +196,40 @@ fn new_rfid_hash(rfid_hex: &str, config: &AppConfig) -> Result<String> {
     Ok(hash.format_for_version(bcrypt::Version::TwoB))
 }
 
-async fn migrate_rfid_hash(rfid: &str, db: &DatabaseConnection) -> Result<Option<User>> {
-    let cutoff = Utc::now() - Duration::minutes(15);
+async fn migrate_rfid_hash(
+    rfid: &str,
+    config: &AppConfig,
+    db: &DatabaseConnection,
+) -> Result<Option<User>> {
     let rfid_hash = old_rfid_hash(rfid)?;
 
     let result = Rvperson::find()
-        .find_also_related(TempPassword)
-        .filter(
-            Condition::all()
-                .add(rvperson::Column::Rfid.eq(rfid_hash))
-                .add(
-                    Condition::any()
-                        .add(temppassword::Column::CreatedAt.gte(cutoff))
-                        .add(temppassword::Column::Userid.is_null()),
-                ),
-        )
+        .filter(rvperson::Column::Rfid.eq(rfid_hash))
         .one(db)
         .await?;
 
     match result {
-        Some(result) => Ok(Some(result.into())),
+        Some(result) => {
+            let user = update_user(
+                result.userid,
+                UpdateUser {
+                    username: None,
+                    full_name: None,
+                    email: None,
+                    role: None,
+                    saldo: None,
+                    privacy_level: None,
+                    password: None,
+                    rfid: Some(rfid.to_string()),
+                },
+                config,
+                db,
+            )
+            .await?;
+
+            tracing::info!("Migrated user: {} rfid has to use bcrypt", user.username);
+            Ok(Some(user))
+        }
         None => Ok(None),
     }
 }
@@ -225,26 +239,17 @@ pub async fn find_by_rfid(
     config: &AppConfig,
     db: &DatabaseConnection,
 ) -> Result<Option<User>> {
-    let cutoff = Utc::now() - Duration::minutes(15);
     let rfid_hash = new_rfid_hash(rfid, config)?;
 
     let user = Rvperson::find()
         .find_also_related(TempPassword)
-        .filter(
-            Condition::all()
-                .add(rvperson::Column::Rfid.eq(rfid_hash))
-                .add(
-                    Condition::any()
-                        .add(temppassword::Column::CreatedAt.gte(cutoff))
-                        .add(temppassword::Column::Userid.is_null()),
-                ),
-        )
+        .filter(rvperson::Column::Rfid.eq(rfid_hash))
         .one(db)
         .await?;
 
     match user {
         Some(user) => return Ok(Some(user.into())),
-        None => migrate_rfid_hash(rfid, db).await,
+        None => migrate_rfid_hash(rfid, config, db).await,
     }
 }
 
