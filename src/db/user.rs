@@ -172,6 +172,30 @@ pub async fn find_user_by_username(username: &str, db: &DatabaseConnection) -> R
     Ok(result.into())
 }
 
+pub async fn find_user_by_email(email: &str, db: &DatabaseConnection) -> Result<User> {
+    let cutoff = Utc::now() - Duration::minutes(15);
+
+    let result = Rvperson::find()
+        .find_also_related(TempPassword)
+        .filter(
+            Condition::all()
+                .add(rvperson::Column::Univident.eq(email))
+                .add(
+                    Condition::any()
+                        .add(temppassword::Column::CreatedAt.gte(cutoff))
+                        .add(temppassword::Column::Userid.is_null()),
+                ),
+        )
+        .one(db)
+        .await?
+        .ok_or(AppError::Internal(anyhow::format_err!(
+            "Cannot find user by email {} from database",
+            email
+        )))?;
+
+    Ok(result.into())
+}
+
 fn old_rfid_hash(rfid_hex: &str) -> Result<String> {
     let rfid_bytes = hex::decode(rfid_hex)?;
     let salt_bytes = "rv-vakio-suola".as_bytes();
