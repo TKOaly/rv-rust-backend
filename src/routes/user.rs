@@ -11,10 +11,7 @@ use crate::{
     db::{
         self,
         user::{UpdateUser, User},
-    },
-    error::AppError,
-    middleware::auth::AuthUser,
-    state::AppState,
+    }, error::AppError, middleware::auth::AuthUser, state::AppState
 };
 
 #[derive(Deserialize)]
@@ -80,6 +77,67 @@ impl From<UserUpdateRequest> for UpdateUser {
     }
 }
 
+#[derive(Deserialize)]
+struct PrivacyLevelChangeRequest {
+    #[serde(rename = "privacyLevel")]
+    privacy_level: i32,
+}
+
+impl From<PrivacyLevelChangeRequest> for UpdateUser {
+    fn from(privacy_request: PrivacyLevelChangeRequest) -> Self {
+        Self {
+            username: None,
+            full_name: None,
+            email: None,
+            role: None,
+            saldo: None,
+            privacy_level: Some(privacy_request.privacy_level.into()),
+            password: None,
+            rfid: None,
+        }
+    }
+}
+
+#[derive(Deserialize)]
+struct RfidChangeRequest {
+    rfid: String,
+}
+
+impl From<RfidChangeRequest> for UpdateUser {
+    fn from(rfid_request: RfidChangeRequest) -> Self {
+        Self {
+            username: None,
+            full_name: None,
+            email: None,
+            role: None,
+            saldo: None,
+            privacy_level: None,
+            password: None,
+            rfid: Some(rfid_request.rfid),
+        }
+    }
+}
+
+#[derive(Deserialize)]
+struct PasswordChangeRequest {
+    password: String,
+}
+
+impl From<PasswordChangeRequest> for UpdateUser {
+    fn from(password_request: PasswordChangeRequest) -> Self {
+        Self {
+            username: None,
+            full_name: None,
+            email: None,
+            role: None,
+            saldo: None,
+            privacy_level: None,
+            password: Some(password_request.password),
+            rfid: None,
+        }
+    }
+}
+
 pub fn public_routes() -> Router<AppState> {
     Router::new().route("/user_exists", post(user_exists))
 }
@@ -88,6 +146,9 @@ pub fn protected_routes() -> Router<AppState> {
     Router::new()
         .route("/user", get(get_user))
         .route("/", patch(update_user))
+        .route("/changePrivacylevel", post(change_privacylevel))
+        .route("/changeRfid", post(change_rfid))
+        .route("/changePassword", post(change_password))
 }
 
 async fn user_exists(
@@ -159,4 +220,68 @@ async fn update_user(
         };
 
     response
+}
+
+async fn change_privacylevel(
+    State(state): State<AppState>,
+    Extension(auth): Extension<AuthUser>,
+    body: Json<PrivacyLevelChangeRequest>,
+) -> impl IntoResponse {
+    let user =
+        match db::user::update_user(auth.user_id, body.0.into(), &state.config, &state.database)
+            .await
+        {
+            Ok(u) => u,
+            Err(e) => return e.into_response(),
+        };
+
+    tracing::info!(
+        "User {} changed privacy level to {:?}",
+        user.username,
+        user.privacy_level
+    );
+
+    (StatusCode::NO_CONTENT, ()).into_response()
+}
+
+async fn change_rfid(
+    State(state): State<AppState>,
+    Extension(auth): Extension<AuthUser>,
+    body: Json<RfidChangeRequest>,
+) -> impl IntoResponse {
+    if db::user::find_by_rfid(&body.rfid, &state.config, &state.database)
+        .await
+        .is_ok()
+    {
+        tracing::warn!(
+            "User with id {} tried to change rfid but it was already taken",
+            auth.user_id
+        );
+        return AppError::IdentifierTaken("RFID already in use".to_string()).into_response();
+    }
+
+    match db::user::update_user(auth.user_id, body.0.into(), &state.config, &state.database).await {
+        Ok(user) => {
+            tracing::info!("User {} changed rfid", user.username);
+            (StatusCode::NO_CONTENT, ()).into_response()
+        }
+        Err(e) => e.into_response(),
+    }
+}
+
+async fn change_password(
+    State(state): State<AppState>,
+    Extension(auth): Extension<AuthUser>,
+    body: Json<PasswordChangeRequest>,
+) -> impl IntoResponse {
+    let user =
+        match db::user::update_user(auth.user_id, body.0.into(), &state.config, &state.database)
+            .await
+        {
+            Ok(u) => u,
+            Err(e) => return e.into_response(),
+        };
+
+    tracing::info!("User {} changed password", user.username);
+    (StatusCode::NO_CONTENT, ()).into_response()
 }
