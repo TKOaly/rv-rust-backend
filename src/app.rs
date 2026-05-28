@@ -7,6 +7,7 @@ use axum::{Router, middleware};
 use tokio::net::TcpListener;
 use tracing_subscriber::{EnvFilter, fmt};
 
+
 pub async fn build_router(state: AppState) -> Router {
     let public = Router::new()
         .nest("/api/v2/authenticate", auth::v2::routes())
