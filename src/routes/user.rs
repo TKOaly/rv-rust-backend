@@ -11,7 +11,10 @@ use crate::{
     db::{
         self,
         user::{UpdateUser, User},
-    }, error::AppError, middleware::auth::AuthUser, state::AppState
+    },
+    error::AppError,
+    middleware::auth::AuthUser,
+    state::AppState,
 };
 
 #[derive(Deserialize)]

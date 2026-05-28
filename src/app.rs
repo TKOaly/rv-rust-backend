@@ -1,8 +1,9 @@
+use crate::middleware::auth::{jwt_middleware, require_active_account, require_rv_terminal};
 use crate::routes::auth;
 use crate::state::AppState;
 use crate::{config::AppConfig, routes::user};
 
-use axum::Router;
+use axum::{Router, middleware};
 use tokio::net::TcpListener;
 use tracing_subscriber::{EnvFilter, fmt};
 
@@ -12,7 +13,25 @@ pub async fn build_router(state: AppState) -> Router {
         .nest("/api/v1/authenticate", auth::v1::routes())
         .nest("/api/v1/user", user::public_routes());
 
-    Router::new().merge(public).with_state(state)
+    let rv_terminal = Router::new()
+        .nest("/api/v1/user", user::protected_routes())
+        .route_layer(middleware::from_fn_with_state(
+            state.clone(),
+            jwt_middleware,
+        ))
+        .layer(middleware::from_fn_with_state(
+            state.clone(),
+            require_rv_terminal,
+        ))
+        .layer(middleware::from_fn_with_state(
+            state.clone(),
+            require_active_account,
+        ));
+
+    Router::new()
+        .merge(rv_terminal)
+        .merge(public)
+        .with_state(state)
 }
 
 pub async fn create_app() -> (Router, TcpListener) {
