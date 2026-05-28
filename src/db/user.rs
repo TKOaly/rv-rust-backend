@@ -10,9 +10,9 @@ use bcrypt;
 use chrono::{Duration, Utc};
 use sea_orm::{
     ActiveModelTrait, ActiveValue::Set, ColumnTrait, Condition, DatabaseConnection, EntityTrait,
-    QueryFilter,
+    FromQueryResult, QueryFilter, QueryOrder, QuerySelect,
 };
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
 #[derive(Debug, Serialize, Eq, PartialEq)]
@@ -126,6 +126,13 @@ pub struct UpdateUser {
     pub privacy_level: Option<PrivacyLevel>,
     pub password: Option<String>,
     pub rfid: Option<String>,
+}
+
+#[derive(Serialize, Deserialize, FromQueryResult)]
+pub struct Leaderboard {
+    #[serde(rename = "name")]
+    username: String,
+    saldo: i32,
 }
 
 pub async fn find_user_by_id(user_id: i32, db: &DatabaseConnection) -> Result<User> {
@@ -339,143 +346,17 @@ pub async fn update_user(
     Ok(user.into())
 }
 
-pub async fn find_user_by_username(username: &str, db: &DatabaseConnection) -> Result<User> {
-    let cutoff = Utc::now() - Duration::minutes(15);
-
-    let (user, temp_password) = Rvperson::find()
-        .find_also_related(TempPassword)
-        .filter(
-            Condition::all()
-                .add(rvperson::Column::Name.eq(username))
-                .add(
-                    Condition::any()
-                        .add(temppassword::Column::CreatedAt.gte(cutoff))
-                        .add(temppassword::Column::Userid.is_null()),
-                ),
-        )
-        .one(db)
-        .await?
-        .ok_or(AppError::Internal(anyhow::format_err!(
-            "Cannot find user by username {} from database",
-            username
-        )))?;
-
-    Ok(User {
-        id: user.userid,
-        username: user.name,
-        realname: user.realname.unwrap_or_default(),
-        email: user.univident,
-        role: user.roleid.into(),
-        saldo: user.saldo,
-        privacy_level: user.privacy_level.into(),
-        password_hash: user.pass,
-        rfid_hash: user.rfid,
-        temp_password_hash: temp_password.map(|m| m.temp_password),
-    })
-}
-
-fn old_rfid_hash(rfid_hex: &str) -> Result<String> {
-    let rfid_bytes = hex::decode(rfid_hex)?;
-    let salt_bytes = "rv-vakio-suola".as_bytes();
-    let mut hasher = Sha256::new();
-    hasher.update(salt_bytes);
-    hasher.update(rfid_bytes);
-    let digest = hasher.finalize();
-    let hex_str = hex::encode(digest);
-
-    let filtered = hex_str
-        .chars()
-        .enumerate()
-        .filter(|(idx, c)| !(idx % 2 == 0 && *c == '0'))
-        .map(|(_, c)| c)
-        .collect();
-
-    Ok(filtered)
-}
-
-fn new_rfid_hash(rfid_hex: &str, config: &AppConfig) -> Result<String> {
-    let hash = bcrypt::hash_with_salt(rfid_hex, 11, config.rfid_salt)?;
-    Ok(hash.format_for_version(bcrypt::Version::TwoB))
-}
-
-async fn migrate_rfid_hash(rfid: &str, db: &DatabaseConnection) -> Result<Option<User>> {
-    let cutoff = Utc::now() - Duration::minutes(15);
-    let rfid_hash = old_rfid_hash(rfid)?;
-
-    let user = Rvperson::find()
-        .find_also_related(TempPassword)
-        .filter(
-            Condition::all()
-                .add(rvperson::Column::Rfid.eq(rfid_hash))
-                .add(
-                    Condition::any()
-                        .add(temppassword::Column::CreatedAt.gte(cutoff))
-                        .add(temppassword::Column::Userid.is_null()),
-                ),
-        )
-        .one(db)
+pub async fn leaderboard(db: &DatabaseConnection) -> Result<Vec<Leaderboard>> {
+    let rows: Vec<Leaderboard> = Rvperson::find()
+        .select_only()
+        .column(rvperson::Column::Name)
+        .column(rvperson::Column::Saldo)
+        .filter(rvperson::Column::PrivacyLevel.eq(i32::from(PrivacyLevel::NoLimits)))
+        .order_by_desc(rvperson::Column::Saldo)
+        .limit(50)
+        .into_model::<Leaderboard>()
+        .all(db)
         .await?;
 
-    match user {
-        Some((user, temp_password)) => {
-            tracing::info!("'Migrated user: {} rfid has to use bcrypt", user.name);
-            Ok(Some(User {
-                id: user.userid,
-                username: user.name,
-                realname: user.realname.unwrap_or_default(),
-                email: user.univident,
-                role: user.roleid.into(),
-                saldo: user.saldo,
-                privacy_level: user.privacy_level.into(),
-                password_hash: user.pass,
-                rfid_hash: user.rfid,
-                temp_password_hash: temp_password.map(|m| m.temp_password),
-            }))
-        }
-        None => Ok(None),
-    }
-}
-
-pub async fn find_by_rfid(
-    rfid: &str,
-    config: &AppConfig,
-    db: &DatabaseConnection,
-) -> Result<Option<User>> {
-    let cutoff = Utc::now() - Duration::minutes(15);
-    let rfid_hash = new_rfid_hash(rfid, config)?;
-
-    let user = Rvperson::find()
-        .find_also_related(TempPassword)
-        .filter(
-            Condition::all()
-                .add(rvperson::Column::Rfid.eq(rfid_hash))
-                .add(
-                    Condition::any()
-                        .add(temppassword::Column::CreatedAt.gte(cutoff))
-                        .add(temppassword::Column::Userid.is_null()),
-                ),
-        )
-        .one(db)
-        .await?;
-
-    match user {
-        Some((user, temp_password)) => Ok(Some(User {
-            id: user.userid,
-            username: user.name,
-            realname: user.realname.unwrap_or_default(),
-            email: user.univident,
-            role: user.roleid.into(),
-            saldo: user.saldo,
-            privacy_level: user.privacy_level.into(),
-            password_hash: user.pass,
-            rfid_hash: user.rfid,
-            temp_password_hash: temp_password.map(|m| m.temp_password),
-        })),
-        None => migrate_rfid_hash(rfid, db).await,
-    }
-}
-
-pub async fn remove_temp_password(user_id: i32, db: &DatabaseConnection) -> Result<()> {
-    let _ = TempPassword::delete_by_id(user_id).exec(db).await?;
-    Ok(())
+    Ok(rows)
 }
