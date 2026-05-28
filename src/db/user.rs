@@ -1,8 +1,12 @@
 use crate::{
     config::AppConfig,
-    db::entities::{
-        prelude::{Rvperson, TempPassword},
-        rvperson, temppassword,
+    db::{
+        actions::Actions,
+        entities::{
+            personhist,
+            prelude::{Personhist, Rvperson, TempPassword},
+            rvperson, temppassword,
+        },
     },
     error::{AppError, Result},
 };
@@ -135,6 +139,15 @@ pub struct Leaderboard {
     saldo: i32,
 }
 
+#[derive(Deserialize)]
+pub struct InsertUser {
+    pub username: String,
+    pub password: String,
+    #[serde(rename = "fullName")]
+    pub full_name: String,
+    pub email: String,
+}
+
 pub async fn find_user_by_id(user_id: i32, db: &DatabaseConnection) -> Result<User> {
     let cutoff = Utc::now() - Duration::minutes(15);
 
@@ -201,6 +214,44 @@ pub async fn find_user_by_email(email: &str, db: &DatabaseConnection) -> Result<
         )))?;
 
     Ok(result.into())
+}
+
+pub async fn insert_user(user: InsertUser, db: &DatabaseConnection) -> Result<User> {
+    let now = Utc::now();
+    let hash = bcrypt::hash(user.password, 11)?;
+
+    let insert_user = rvperson::ActiveModel {
+        name: Set(user.username.clone()),
+        pass: Set(hash.clone()),
+        univident: Set(user.email.clone()),
+        realname: Set(Some(user.full_name.clone())),
+        ..Default::default()
+    };
+
+    let result = Rvperson::insert(insert_user).exec(db).await?;
+
+    let insert_log = personhist::ActiveModel {
+        time: Set(now.into()),
+        actionid: Set(i32::from(Actions::UserCreated)),
+        userid1: Set(result.last_insert_id),
+        userid2: Set(result.last_insert_id),
+        ..Default::default()
+    };
+
+    let _ = Personhist::insert(insert_log).exec(db).await?;
+
+    Ok(User {
+        id: result.last_insert_id,
+        username: user.username,
+        full_name: user.full_name,
+        email: user.email,
+        role: Role::User,
+        saldo: 0,
+        privacy_level: PrivacyLevel::NoLimits,
+        password_hash: hash,
+        temp_password_hash: None,
+        rfid_hash: None,
+    })
 }
 
 fn old_rfid_hash(rfid_hex: &str) -> Result<String> {
