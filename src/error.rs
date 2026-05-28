@@ -18,6 +18,8 @@ pub enum AppError {
     InvalidCredentials(String),
     #[error("Invalid token")]
     InvalidToken,
+    #[error("Identifier taken {0}")]
+    IdentifierTaken(String),
     #[error("Bad request")]
     BadRequest,
     #[error("Internal server error")]
@@ -48,6 +50,9 @@ impl IntoResponse for AppError {
                 "invalid_token",
                 "Invalid authorization token".to_string(),
             ),
+            AppError::IdentifierTaken(msg) => {
+                (StatusCode::CONFLICT, "identifier_taken", msg.to_string())
+            }
             AppError::BadRequest => (StatusCode::BAD_REQUEST, "bad_request", self.to_string()),
             AppError::Internal(e) => {
                 tracing::error!(error = ?e, "Internal server error");

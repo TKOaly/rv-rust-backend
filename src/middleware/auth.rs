@@ -1,5 +1,4 @@
 use crate::{
-    config::AppConfig,
     db::{self, user::Role},
     error::{AppError, Result},
     state::AppState,
@@ -25,7 +24,7 @@ struct Claims {
 
 #[derive(Debug, Clone)]
 pub struct AuthUser {
-    pub user_id: String,
+    pub user_id: i32,
     pub logged_in_from_rv_terminal: bool,
 }
 
@@ -77,15 +76,15 @@ fn extract_bearer_token(headers: &HeaderMap) -> Result<&str> {
 }
 
 pub async fn jwt_middleware(
-    State(config): State<AppConfig>,
+    State(state): State<AppState>,
     mut req: Request,
     next: Next,
 ) -> Result<Response> {
     let token = extract_bearer_token(req.headers())?;
-    let claims = validate_token(token, &config.jwt_secret)?;
+    let claims = validate_token(token, &state.config.jwt_secret)?;
 
     req.extensions_mut().insert(AuthUser {
-        user_id: claims.sub,
+        user_id: claims.sub.parse()?,
         logged_in_from_rv_terminal: claims.logged_in_from_rv_terminal,
     });
 
@@ -99,7 +98,7 @@ struct BodyWithRvTerminalSecret {
 }
 
 pub async fn require_rv_terminal(
-    State(config): State<AppConfig>,
+    State(state): State<AppState>,
     req: Request,
     next: Next,
 ) -> Result<Response> {
@@ -112,7 +111,7 @@ pub async fn require_rv_terminal(
     let logged_in_from_rv_terminal = serde_json::from_slice::<BodyWithRvTerminalSecret>(&bytes)
         .ok()
         .and_then(|body| body.rv_terminal_secret)
-        .map(|secret| secret == config.rv_terminal_secret)
+        .map(|secret| secret == state.config.rv_terminal_secret)
         .unwrap_or(false);
 
     if !logged_in_from_rv_terminal {
@@ -139,7 +138,7 @@ pub async fn require_role(
         }
     };
 
-    let user = db::user::find_user_by_id(auth.user_id.parse()?, &state.database).await?;
+    let user = db::user::find_user_by_id(auth.user_id, &state.database).await?;
 
     if user.role != role {
         return Err(AppError::NotAuthorized);
@@ -162,7 +161,7 @@ pub async fn require_active_account(
         }
     };
 
-    let user = db::user::find_user_by_id(auth.user_id.parse()?, &state.database).await?;
+    let user = db::user::find_user_by_id(auth.user_id, &state.database).await?;
 
     if user.role != Role::Inactive {
         return Err(AppError::NotAuthorized);
