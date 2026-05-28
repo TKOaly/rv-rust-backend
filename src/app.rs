@@ -1,12 +1,11 @@
+use crate::config::AppConfig;
 use crate::middleware::auth::{jwt_middleware, require_active_account, require_rv_terminal};
-use crate::routes::auth;
+use crate::routes::{auth, statistics, user};
 use crate::state::AppState;
-use crate::{config::AppConfig, routes::user};
 
 use axum::{Router, middleware};
 use tokio::net::TcpListener;
 use tracing_subscriber::{EnvFilter, fmt};
-
 
 pub async fn build_router(state: AppState) -> Router {
     let public = Router::new()
@@ -14,7 +13,7 @@ pub async fn build_router(state: AppState) -> Router {
         .nest("/api/v1/authenticate", auth::v1::routes())
         .nest("/api/v1/user", user::public_routes());
 
-    let rv_terminal = Router::new()
+    let rv_terminal_protected = Router::new()
         .nest("/api/v1/user", user::protected_routes())
         .route_layer(middleware::from_fn_with_state(
             state.clone(),
@@ -29,8 +28,16 @@ pub async fn build_router(state: AppState) -> Router {
             require_active_account,
         ));
 
+    let rv_terminal_public = Router::new()
+        .nest("/api/v1/statistics", statistics::routes())
+        .layer(middleware::from_fn_with_state(
+            state.clone(),
+            require_rv_terminal,
+        ));
+
     Router::new()
-        .merge(rv_terminal)
+        .merge(rv_terminal_protected)
+        .merge(rv_terminal_public)
         .merge(public)
         .with_state(state)
 }
