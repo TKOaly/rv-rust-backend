@@ -28,7 +28,7 @@ struct UserExistsResponse {
 }
 
 #[derive(Deserialize, Serialize)]
-struct UserResponse {
+pub struct UserResponse {
     #[serde(rename = "userId")]
     pub user_id: i32,
     pub username: String,
@@ -244,7 +244,7 @@ async fn change_privacylevel(
         user.privacy_level
     );
 
-    (StatusCode::NO_CONTENT, ()).into_response()
+    StatusCode::NO_CONTENT.into_response()
 }
 
 async fn change_rfid(
@@ -266,7 +266,7 @@ async fn change_rfid(
     match db::user::update_user(auth.user_id, body.0.into(), &state.config, &state.database).await {
         Ok(user) => {
             tracing::info!("User {} changed rfid", user.username);
-            (StatusCode::NO_CONTENT, ()).into_response()
+            StatusCode::NO_CONTENT.into_response()
         }
         Err(e) => e.into_response(),
     }
@@ -286,5 +286,5 @@ async fn change_password(
         };
 
     tracing::info!("User {} changed password", user.username);
-    (StatusCode::NO_CONTENT, ()).into_response()
+    StatusCode::NO_CONTENT.into_response()
 }
