@@ -1,10 +1,9 @@
 use sea_orm::FromQueryResult;
-use serde::Deserialize;
+use serde::Serialize;
 
-#[derive(Deserialize, FromQueryResult)]
+#[derive(Serialize, FromQueryResult)]
 pub struct Category {
-    #[serde(rename = "pgrpid")]
+    #[serde(rename = "categoryId")]
     pub id: i32,
-    #[serde(rename = "pgrdescr")]
     pub description: String,
 }

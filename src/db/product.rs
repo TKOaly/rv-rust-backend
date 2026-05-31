@@ -2,6 +2,7 @@ use sea_orm::{
     ColumnTrait, Condition, DatabaseConnection, EntityTrait, FromQueryResult, QueryFilter,
     QuerySelect,
 };
+use serde::Serialize;
 
 use crate::{
     db::{
@@ -11,7 +12,7 @@ use crate::{
             price, prodgroup, rvitem,
         },
     },
-    error::Result,
+    error::{AppError, Result},
 };
 
 #[derive(Clone, FromQueryResult)]
@@ -25,11 +26,14 @@ struct ProductRow {
     sellprice: i32,
 }
 
+#[derive(Serialize)]
 pub struct Product {
     pub barcode: String,
     pub name: String,
     pub category: Category,
+    #[serde(rename="buyPrice")]
     pub buy_price: i32,
+    #[serde(rename="sellPrice")]
     pub sell_price: i32,
     pub stock: i32,
 }
