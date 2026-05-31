@@ -31,9 +31,9 @@ pub struct Product {
     pub barcode: String,
     pub name: String,
     pub category: Category,
-    #[serde(rename="buyPrice")]
+    #[serde(rename = "buyPrice")]
     pub buy_price: i32,
-    #[serde(rename="sellPrice")]
+    #[serde(rename = "sellPrice")]
     pub sell_price: i32,
     pub stock: i32,
 }
