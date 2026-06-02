@@ -1,4 +1,4 @@
-use chrono::Utc;
+use chrono::{DateTime, Utc};
 use sea_orm::{
     ActiveModelTrait, ActiveValue::Set, ColumnTrait, Condition, DatabaseConnection, EntityTrait,
     FromQueryResult, QueryFilter, QueryOrder, QuerySelect, QueryTrait, TransactionTrait,
@@ -57,6 +57,17 @@ impl From<ProductRow> for Product {
             stock: row.count,
         }
     }
+}
+
+#[derive(Serialize)]
+pub struct PurchaseEvent {
+    pub id: i32,
+    pub time: DateTime<Utc>,
+    pub price: i32,
+    #[serde(rename = "balanceAfter")]
+    pub balance_after: i32,
+    #[serde(rename = "stockAfter")]
+    pub stock_after: i32,
 }
 
 pub async fn search_products(query: &str, db: &DatabaseConnection) -> Result<Vec<Product>> {
@@ -130,6 +141,97 @@ pub async fn find_by_barcode(barcode: &str, db: &DatabaseConnection) -> Result<P
         )))?;
 
     Ok(row.into())
+}
+
+pub async fn record_purchase(
+    barcode: &str,
+    user_id: i32,
+    count: i32,
+    db: &DatabaseConnection,
+) -> Result<Vec<PurchaseEvent>> {
+    let txn = db.begin().await?;
+    let now = Utc::now();
+
+    let price = Price::find()
+        .filter(price::Column::Barcode.eq(barcode))
+        .filter(price::Column::Endtime.is_null())
+        .one(&txn)
+        .await?
+        .ok_or_else(|| {
+            AppError::Internal(anyhow::format_err!(
+                "Cannot find price by barcode: {}",
+                barcode
+            ))
+        })?;
+
+    let stock_before = price.count;
+    let sell_price = price.sellprice;
+    let price_id = price.priceid;
+    let item_id = price.itemid;
+
+    let mut active_price: price::ActiveModel = price.into();
+    active_price.count = Set(stock_before - count);
+    active_price.update(&txn).await?;
+
+    let user = Rvperson::find()
+        .filter(rvperson::Column::Userid.eq(user_id))
+        .one(&txn)
+        .await?
+        .ok_or_else(|| {
+            AppError::Internal(anyhow::format_err!(
+                "Cannot find user by user_id {}",
+                user_id
+            ))
+        })?;
+
+    let balance_before = user.saldo;
+    let mut active_user: rvperson::ActiveModel = user.into();
+    active_user.saldo = Set(balance_before - count * sell_price);
+    active_user.update(&txn).await?;
+
+    let mut stock = stock_before;
+    let mut balance = balance_before;
+    let mut purchases = Vec::new();
+
+    /* Storing multibuy into history as multiple individual history events. */
+    for _ in 0..count {
+        stock -= 1;
+        balance -= sell_price;
+
+        let saldo_history = saldohistory::ActiveModel {
+            userid: Set(user_id),
+            time: Set(now.into()),
+            saldo: Set(Some(balance)),
+            difference: Set(-sell_price),
+            ..Default::default()
+        }
+        .insert(&txn)
+        .await?;
+
+        let item_history = itemhistory::ActiveModel {
+            time: Set(now.into()),
+            count: Set(Some(stock)),
+            actionid: Set(i32::from(Actions::BoughtBy)),
+            itemid: Set(item_id),
+            userid: Set(user_id),
+            priceid1: Set(price_id),
+            saldhistid: Set(Some(saldo_history.saldhistid)),
+            ..Default::default()
+        }
+        .insert(&txn)
+        .await?;
+
+        purchases.push(PurchaseEvent {
+            id: item_history.itemhistid,
+            time: now,
+            price: sell_price,
+            balance_after: balance,
+            stock_after: stock,
+        });
+    }
+
+    txn.commit().await?;
+    Ok(purchases)
 }
 
 pub async fn return_purchase(barcode: &str, user_id: i32, db: &DatabaseConnection) -> Result<bool> {
