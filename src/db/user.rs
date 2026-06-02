@@ -121,7 +121,7 @@ impl From<rvperson::Model> for User {
     }
 }
 
-pub struct UpdateUser {
+pub struct UpdateUserData {
     pub username: Option<String>,
     pub full_name: Option<String>,
     pub email: Option<String>,
@@ -134,13 +134,12 @@ pub struct UpdateUser {
 
 #[derive(Serialize, Deserialize, FromQueryResult)]
 pub struct Leaderboard {
-    #[serde(rename = "name")]
     username: String,
     saldo: i32,
 }
 
 #[derive(Deserialize)]
-pub struct InsertUser {
+pub struct InsertUserData {
     pub username: String,
     pub password: String,
     #[serde(rename = "fullName")]
@@ -160,10 +159,12 @@ pub async fn find_user_by_id(user_id: i32, db: &DatabaseConnection) -> Result<Us
         )
         .one(db)
         .await?
-        .ok_or(AppError::Internal(anyhow::format_err!(
-            "Cannot find user by id {} from database",
-            user_id
-        )))?;
+        .ok_or_else(|| {
+            AppError::Internal(anyhow::format_err!(
+                "Cannot find user by id {} from database",
+                user_id
+            ))
+        })?;
 
     Ok(result.into())
 }
@@ -184,10 +185,12 @@ pub async fn find_user_by_username(username: &str, db: &DatabaseConnection) -> R
         )
         .one(db)
         .await?
-        .ok_or(AppError::Internal(anyhow::format_err!(
-            "Cannot find user by username {} from database",
-            username
-        )))?;
+        .ok_or_else(|| {
+            AppError::Internal(anyhow::format_err!(
+                "Cannot find user by username {} from database",
+                username
+            ))
+        })?;
 
     Ok(result.into())
 }
@@ -208,15 +211,17 @@ pub async fn find_user_by_email(email: &str, db: &DatabaseConnection) -> Result<
         )
         .one(db)
         .await?
-        .ok_or(AppError::Internal(anyhow::format_err!(
-            "Cannot find user by email {} from database",
-            email
-        )))?;
+        .ok_or_else(|| {
+            AppError::Internal(anyhow::format_err!(
+                "Cannot find user by email {} from database",
+                email
+            ))
+        })?;
 
     Ok(result.into())
 }
 
-pub async fn insert_user(user: InsertUser, db: &DatabaseConnection) -> Result<User> {
+pub async fn insert_user(user: InsertUserData, db: &DatabaseConnection) -> Result<User> {
     let now = Utc::now();
     let hash = bcrypt::hash(user.password, 11)?;
 
@@ -294,7 +299,7 @@ async fn migrate_rfid_hash(
         Some(result) => {
             let user = update_user(
                 result.userid,
-                UpdateUser {
+                UpdateUserData {
                     username: None,
                     full_name: None,
                     email: None,
@@ -342,7 +347,7 @@ pub async fn remove_temp_password(user_id: i32, db: &DatabaseConnection) -> Resu
 
 pub async fn update_user(
     user_id: i32,
-    data: UpdateUser,
+    data: UpdateUserData,
     config: &AppConfig,
     db: &DatabaseConnection,
 ) -> Result<User> {
@@ -400,7 +405,7 @@ pub async fn update_user(
 pub async fn leaderboard(db: &DatabaseConnection) -> Result<Vec<Leaderboard>> {
     let rows: Vec<Leaderboard> = Rvperson::find()
         .select_only()
-        .column(rvperson::Column::Name)
+        .column_as(rvperson::Column::Name, "username")
         .column(rvperson::Column::Saldo)
         .filter(rvperson::Column::PrivacyLevel.eq(i32::from(PrivacyLevel::NoLimits)))
         .order_by_desc(rvperson::Column::Saldo)

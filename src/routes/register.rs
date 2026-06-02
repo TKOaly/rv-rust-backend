@@ -1,7 +1,7 @@
 use axum::{Json, Router, extract::State, http::StatusCode, response::IntoResponse, routing::post};
 
 use crate::{
-    db::{self, user::InsertUser},
+    db::{self, user::InsertUserData},
     error::AppError,
     routes::user::UserResponse,
     state::AppState,
@@ -11,7 +11,7 @@ pub fn routes() -> Router<AppState> {
     Router::new().route("/", post(register))
 }
 
-async fn register(State(state): State<AppState>, body: Json<InsertUser>) -> impl IntoResponse {
+async fn register(State(state): State<AppState>, body: Json<InsertUserData>) -> impl IntoResponse {
     if db::user::find_user_by_username(&body.username, &state.database)
         .await
         .is_ok()
