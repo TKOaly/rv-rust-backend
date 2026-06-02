@@ -1,14 +1,10 @@
 use axum::{
-    Json, Router,
-    extract::{Path, State},
-    response::IntoResponse,
-    routing::get,
+    Extension, Json, Router, extract::{Path, State}, http::StatusCode, response::IntoResponse, routing::{get, post}
 };
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    db::{self, product::Product},
-    state::AppState,
+    db::{self, product::Product}, middleware::auth::AuthUser, state::AppState
 };
 
 #[derive(Deserialize)]
@@ -31,6 +27,7 @@ pub fn routes() -> Router<AppState> {
         .route("/search", get(search))
         .route("/", get(get_products))
         .route("/{barcode}", get(get_product_by_barcode))
+        .route("/{barcode}/return", post(return_product))
 }
 
 async fn search(State(state): State<AppState>, body: Json<SearchRequest>) -> impl IntoResponse {
@@ -54,5 +51,22 @@ async fn get_product_by_barcode(
     match db::product::find_by_barcode(&barcode, &state.database).await {
         Ok(product) => Ok(Json(ProductResponse { product })),
         Err(e) => Err(e),
+    }
+}
+
+async fn return_product(
+    State(state): State<AppState>,
+    Extension(auth): Extension<AuthUser>,
+    Path(barcode): Path<String>,
+) -> impl IntoResponse {
+    match db::product::return_purchase(&barcode, auth.user_id, &state.database).await {
+        Ok(success) => {
+            if success {
+                return StatusCode::OK.into_response();
+            }
+
+            StatusCode::FORBIDDEN.into_response()
+        },
+        Err(e) => e.into_response()
     }
 }
