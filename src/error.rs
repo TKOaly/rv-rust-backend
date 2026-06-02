@@ -8,10 +8,12 @@ use thiserror::Error;
 
 #[derive(Error, Debug)]
 pub enum AppError {
-    #[error("Resource not found")]
-    NotFound,
+    #[error("Not found: {0}")]
+    NotFound(String),
     #[error("Not authorized")]
     NotAuthorized,
+    #[error("Insufficient funds")]
+    InsufficientFunds,
     #[error("Forbidden")]
     Forbidden,
     #[error("Invalid credentials: {0}")]
@@ -37,8 +39,13 @@ struct ErrorResponse {
 impl IntoResponse for AppError {
     fn into_response(self) -> Response {
         let (status, error_type, message) = match &self {
-            AppError::NotFound => (StatusCode::NOT_FOUND, "not_found", self.to_string()),
+            AppError::NotFound(msg) => (StatusCode::NOT_FOUND, "not_found", msg.to_string()),
             AppError::NotAuthorized => (StatusCode::FORBIDDEN, "not_authorized", self.to_string()),
+            AppError::InsufficientFunds => (
+                StatusCode::FORBIDDEN,
+                "insufficient_funds",
+                self.to_string(),
+            ),
             AppError::Forbidden => (StatusCode::FORBIDDEN, "forbidden", self.to_string()),
             AppError::InvalidCredentials(msg) => (
                 StatusCode::UNAUTHORIZED,

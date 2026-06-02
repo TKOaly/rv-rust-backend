@@ -10,7 +10,7 @@ use serde::{Deserialize, Serialize};
 use crate::{
     db::{
         self,
-        user::{UpdateUser, User},
+        user::{UpdateUserData, User},
     },
     error::AppError,
     middleware::auth::AuthUser,
@@ -65,7 +65,7 @@ struct UserUpdateRequest {
     email: Option<String>,
 }
 
-impl From<UserUpdateRequest> for UpdateUser {
+impl From<UserUpdateRequest> for UpdateUserData {
     fn from(user: UserUpdateRequest) -> Self {
         Self {
             username: user.username,
@@ -86,7 +86,7 @@ struct PrivacyLevelChangeRequest {
     privacy_level: i32,
 }
 
-impl From<PrivacyLevelChangeRequest> for UpdateUser {
+impl From<PrivacyLevelChangeRequest> for UpdateUserData {
     fn from(privacy_request: PrivacyLevelChangeRequest) -> Self {
         Self {
             username: None,
@@ -106,7 +106,7 @@ struct RfidChangeRequest {
     rfid: String,
 }
 
-impl From<RfidChangeRequest> for UpdateUser {
+impl From<RfidChangeRequest> for UpdateUserData {
     fn from(rfid_request: RfidChangeRequest) -> Self {
         Self {
             username: None,
@@ -126,7 +126,7 @@ struct PasswordChangeRequest {
     password: String,
 }
 
-impl From<PasswordChangeRequest> for UpdateUser {
+impl From<PasswordChangeRequest> for UpdateUserData {
     fn from(password_request: PasswordChangeRequest) -> Self {
         Self {
             username: None,
