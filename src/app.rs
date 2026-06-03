@@ -1,6 +1,6 @@
 use crate::config::AppConfig;
 use crate::middleware::auth::{jwt_middleware, require_active_account, require_rv_terminal};
-use crate::routes::{auth, product, register, statistics, user};
+use crate::routes::{auth, category, product, register, statistics, user};
 use crate::state::AppState;
 
 use axum::{Router, middleware};
@@ -11,6 +11,7 @@ pub async fn build_router(state: AppState) -> Router {
     let rv_terminal_protected = Router::new()
         .nest("/api/v1/user", user::protected_routes())
         .nest("/api/v1/products", product::routes())
+        .nest("/api/v1/categories", category::routes())
         .route_layer(middleware::from_fn_with_state(
             state.clone(),
             jwt_middleware,
