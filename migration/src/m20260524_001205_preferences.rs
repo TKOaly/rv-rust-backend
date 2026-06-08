@@ -11,7 +11,12 @@ impl MigrationTrait for Migration {
                 Table::create()
                     .table(Preferences::Table)
                     .if_not_exists()
-                    .col(ColumnDef::new(Preferences::Key).string().not_null())
+                    .col(
+                        ColumnDef::new(Preferences::Key)
+                            .string()
+                            .not_null()
+                            .primary_key(),
+                    )
                     .col(ColumnDef::new(Preferences::Value).string().not_null())
                     .to_owned(),
             )

@@ -13,6 +13,7 @@ use tracing_subscriber::{EnvFilter, fmt};
 pub async fn build_router(state: AppState) -> Router {
     let rv_terminal_admin = Router::new()
         .nest("/api/v1/categories", admin::category::routes())
+        .nest("/api/v1/preferences", admin::preference::routes())
         .route_layer(middleware::from_fn_with_state(
             state.clone(),
             |state, req, next| require_role(state, Role::Admin, req, next),
@@ -30,7 +31,7 @@ pub async fn build_router(state: AppState) -> Router {
         .nest("/api/v1/user", user::protected_routes())
         .nest("/api/v1/products", product::routes())
         .nest("/api/v1/categories", category::routes())
-        .layer(middleware::from_fn_with_state(
+        .route_layer(middleware::from_fn_with_state(
             state.clone(),
             require_active_account,
         ))
