@@ -143,19 +143,174 @@ pub async fn find_by_barcode(barcode: &str, db: &DatabaseConnection) -> Result<P
     Ok(row.into())
 }
 
+// pub async fn insert_product(
+//     product_data: InsertProductData,
+//     db: &DatabaseConnection,
+//     user_id: i32,
+// ) -> Result<Product> {
+//     let txn = db.begin().await?;
+//     let now = Utc::now().naive_utc();
+
+//     let inserted_item = rvitem::ActiveModel {
+//         pgrpid: Set(Some(product_data.category_id)),
+//         descr: Set(product_data.name.clone()),
+//         ..Default::default()
+//     }
+//     .insert(&txn)
+//     .await?;
+
+//     let inserted_price = price::ActiveModel {
+//         barcode: Set(product_data.barcode.clone()),
+//         count: Set(product_data.stock),
+//         buyprice: Set(product_data.buy_price),
+//         sellprice: Set(product_data.sell_price),
+//         itemid: Set(inserted_item.itemid),
+//         userid: Set(Some(user_id)),
+//         starttime: Set(Some(now)),
+//         endtime: Set(None),
+//         ..Default::default()
+//     }
+//     .insert(&txn)
+//     .await?;
+
+//     let category_descr = prodgroup::Entity::find_by_id(product_data.category_id)
+//         .one(&txn)
+//         .await?
+//         .map(|r| r.descr)
+//         .unwrap_or_default();
+
+//     itemhistory::ActiveModel {
+//         time: Set(Some(now)),
+//         count: Set(product_data.stock),
+//         actionid: Set(Some(actions::ITEM_CREATED)),
+//         userid: Set(Some(user_id)),
+//         itemid: Set(Some(inserted_item.itemid)),
+//         priceid1: Set(Some(inserted_price.priceid)),
+//         ..Default::default()
+//     }
+//     .insert(&txn)
+//     .await?;
+
+//     txn.commit().await?;
+
+//     Ok(Product {
+//         barcode: product_data.barcode,
+//         name: product_data.name,
+//         category: Category {
+//             category_id: product_data.category_id,
+//             description: category_descr,
+//         },
+//         buy_price: product_data.buy_price,
+//         sell_price: product_data.sell_price,
+//         stock: product_data.stock,
+//     })
+// }
+
+// pub async fn update_product(
+//     barcode: &str,
+//     db: &DatabaseConnection,
+//     product_data: UpdateProductData,
+//     user_id: i32,
+// ) -> Result<Option<Product>> {
+//     let txn = db.begin().await?;
+
+//     if product_data.name.is_some() || product_data.category_id.is_some() {
+//         let price_row = price::Entity::find()
+//             .filter(price::Column::Barcode.eq(barcode))
+//             .filter(price::Column::Endtime.is_null())
+//             .one(&txn)
+//             .await?;
+
+//         if let Some(price_row) = price_row {
+//             if let Some(item) = price_row.find_related(rvitem::Entity).one(&txn).await? {
+//                 let mut active: rvitem::ActiveModel = item.into();
+//                 if let Some(name) = product_data.name {
+//                     active.descr = Set(name);
+//                 }
+//                 if let Some(cat_id) = product_data.category_id {
+//                     active.pgrpid = Set(Some(cat_id));
+//                 }
+//                 active.update(&txn).await?;
+//             }
+//         }
+//     }
+
+//     if product_data.stock.is_some() || product_data.buy_price.is_some() || product_data.sell_price.is_some() {
+//         let current = price::Entity::find()
+//             .filter(price::Column::Barcode.eq(barcode))
+//             .filter(price::Column::Endtime.is_null())
+//             .one(&txn)
+//             .await?;
+
+//         if let Some(current) = current {
+//             if product_data.sell_price.is_none() {
+//                 let mut active: price::ActiveModel = current.into();
+//                 if let Some(stock) = product_data.stock {
+//                     active.count = Set(Some(stock));
+//                 }
+//                 if let Some(buy_price) = product_data.buy_price {
+//                     active.buyprice = Set(Some(buy_price));
+//                 }
+//                 active.update(&txn).await?;
+//             } else {
+//                 let now = Utc::now().naive_utc();
+//                 let mut end_active: price::ActiveModel = current.clone().into();
+//                 end_active.endtime = Set(Some(now));
+//                 end_active.update(&txn).await?;
+
+//                 price::ActiveModel {
+//                     barcode: Set(current.barcode),
+//                     count: Set(product_data.stock.map(Some).unwrap_or(current.count)),
+//                     buyprice: Set(product_data.buy_price.map(Some).unwrap_or(current.buyprice)),
+//                     sellprice: Set(Some(product_data.sell_price.unwrap())),
+//                     itemid: Set(current.itemid),
+//                     userid: Set(Some(user_id)),
+//                     starttime: Set(Some(now)),
+//                     endtime: Set(None),
+//                     ..Default::default()
+//                 }
+//                 .insert(&txn)
+//                 .await?;
+//             }
+//         }
+//     }
+
+//     let updated_price = price::Entity::find()
+//         .filter(price::Column::Barcode.eq(barcode))
+//         .filter(price::Column::Endtime.is_null())
+//         .one(&txn)
+//         .await?;
+
+//     txn.commit().await?;
+
+//     match updated_price {
+//         None => Ok(None),
+//         Some(price_row) => {
+//             let item = price_row.find_related(rvitem::Entity).one(db).await?;
+//             match item {
+//                 None => Ok(None),
+//                 Some(item) => {
+//                     let group = item.find_related(prodgroup::Entity).one(db).await?;
+//                     Ok(Some(Product::from((price_row.clone(), item, group))))
+//                 }
+//             }
+//         }
+//     }
+// }
+
 pub async fn record_purchase(
     barcode: &str,
     user_id: i32,
     count: i32,
     db: &DatabaseConnection,
 ) -> Result<Vec<PurchaseEvent>> {
-    let txn = db.begin().await?;
+    let trx = db.begin().await?;
     let now = Utc::now();
 
     let price = Price::find()
         .filter(price::Column::Barcode.eq(barcode))
         .filter(price::Column::Endtime.is_null())
-        .one(&txn)
+        .one(&trx)
         .await?
         .ok_or_else(|| {
             AppError::Internal(anyhow::format_err!(
@@ -171,11 +326,11 @@ pub async fn record_purchase(
 
     let mut active_price: price::ActiveModel = price.into();
     active_price.count = Set(stock_before - count);
-    active_price.update(&txn).await?;
+    active_price.update(&trx).await?;
 
     let user = Rvperson::find()
         .filter(rvperson::Column::Userid.eq(user_id))
-        .one(&txn)
+        .one(&trx)
         .await?
         .ok_or_else(|| {
             AppError::Internal(anyhow::format_err!(
@@ -187,7 +342,7 @@ pub async fn record_purchase(
     let balance_before = user.saldo;
     let mut active_user: rvperson::ActiveModel = user.into();
     active_user.saldo = Set(balance_before - count * sell_price);
-    active_user.update(&txn).await?;
+    active_user.update(&trx).await?;
 
     let mut stock = stock_before;
     let mut balance = balance_before;
@@ -205,7 +360,7 @@ pub async fn record_purchase(
             difference: Set(-sell_price),
             ..Default::default()
         }
-        .insert(&txn)
+        .insert(&trx)
         .await?;
 
         let item_history = itemhistory::ActiveModel {
@@ -218,7 +373,7 @@ pub async fn record_purchase(
             saldhistid: Set(Some(saldo_history.saldhistid)),
             ..Default::default()
         }
-        .insert(&txn)
+        .insert(&trx)
         .await?;
 
         purchases.push(PurchaseEvent {
@@ -230,7 +385,7 @@ pub async fn record_purchase(
         });
     }
 
-    txn.commit().await?;
+    trx.commit().await?;
     Ok(purchases)
 }
 

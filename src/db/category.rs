@@ -1,4 +1,7 @@
-use sea_orm::{DatabaseConnection, EntityTrait, FromQueryResult, QuerySelect};
+use sea_orm::{
+    ActiveModelTrait, ActiveValue::Set, DatabaseConnection, EntityTrait, FromQueryResult,
+    QuerySelect,
+};
 use serde::Serialize;
 
 use crate::{
@@ -38,4 +41,18 @@ pub async fn find_category_by_id(
         .await?;
 
     Ok(category)
+}
+
+pub async fn insert_category(name: &str, db: &DatabaseConnection) -> Result<Category> {
+    let new_category = prodgroup::ActiveModel {
+        descr: Set(name.to_string()),
+        ..Default::default()
+    };
+
+    let category = new_category.insert(db).await?;
+
+    Ok(Category {
+        id: category.pgrpid,
+        description: category.descr,
+    })
 }

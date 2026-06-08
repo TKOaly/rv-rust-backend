@@ -1,6 +1,9 @@
 use crate::config::AppConfig;
-use crate::middleware::auth::{jwt_middleware, require_active_account, require_rv_terminal};
-use crate::routes::{auth, category, product, register, statistics, user};
+use crate::db::user::Role;
+use crate::middleware::auth::{
+    jwt_middleware, require_active_account, require_role, require_rv_terminal,
+};
+use crate::routes::{admin, auth, category, product, register, statistics, user};
 use crate::state::AppState;
 
 use axum::{Router, middleware};
@@ -8,13 +11,12 @@ use tokio::net::TcpListener;
 use tracing_subscriber::{EnvFilter, fmt};
 
 pub async fn build_router(state: AppState) -> Router {
-    let rv_terminal_protected = Router::new()
-        .nest("/api/v1/user", user::protected_routes())
-        .nest("/api/v1/products", product::routes())
-        .nest("/api/v1/categories", category::routes())
+    let rv_terminal_admin = Router::new()
+        .nest("/api/v1/categories", admin::category::routes())
+        .nest("/api/v1/preferences", admin::preference::routes())
         .route_layer(middleware::from_fn_with_state(
             state.clone(),
-            jwt_middleware,
+            |state, req, next| require_role(state, Role::Admin, req, next),
         ))
         .layer(middleware::from_fn_with_state(
             state.clone(),
@@ -22,7 +24,24 @@ pub async fn build_router(state: AppState) -> Router {
         ))
         .layer(middleware::from_fn_with_state(
             state.clone(),
+            jwt_middleware,
+        ));
+
+    let rv_terminal_protected = Router::new()
+        .nest("/api/v1/user", user::protected_routes())
+        .nest("/api/v1/products", product::routes())
+        .nest("/api/v1/categories", category::routes())
+        .route_layer(middleware::from_fn_with_state(
+            state.clone(),
             require_active_account,
+        ))
+        .layer(middleware::from_fn_with_state(
+            state.clone(),
+            require_rv_terminal,
+        ))
+        .route_layer(middleware::from_fn_with_state(
+            state.clone(),
+            jwt_middleware,
         ));
 
     let rv_terminal_public = Router::new()
@@ -39,6 +58,7 @@ pub async fn build_router(state: AppState) -> Router {
         .nest("/api/v1/user", user::public_routes());
 
     Router::new()
+        .merge(rv_terminal_admin)
         .merge(rv_terminal_protected)
         .merge(rv_terminal_public)
         .merge(public)
