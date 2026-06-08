@@ -3,7 +3,7 @@ use crate::db::user::Role;
 use crate::middleware::auth::{
     jwt_middleware, require_active_account, require_role, require_rv_terminal,
 };
-use crate::routes::{auth, category, product, register, statistics, user};
+use crate::routes::{admin, auth, category, product, register, statistics, user};
 use crate::state::AppState;
 
 use axum::{Router, middleware};
@@ -12,6 +12,7 @@ use tracing_subscriber::{EnvFilter, fmt};
 
 pub async fn build_router(state: AppState) -> Router {
     let rv_terminal_admin = Router::new()
+        .nest("/api/v1/categories", admin::category::routes())
         .route_layer(middleware::from_fn_with_state(
             state.clone(),
             |state, req, next| require_role(state, Role::Admin, req, next),
