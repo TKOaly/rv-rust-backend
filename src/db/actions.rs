@@ -1,6 +1,7 @@
 pub enum Actions {
     ItemCreated,
     ChangedDescription,
+    #[deprecated(note = "Feature removed")]
     ChangedWeight,
     ChangedProductGroup,
     BoughtBy,
