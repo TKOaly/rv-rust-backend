@@ -19,7 +19,7 @@ use sea_orm::{
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
-#[derive(Debug, Serialize, Eq, PartialEq)]
+#[derive(Debug, Serialize, Eq, PartialEq, Clone)]
 pub enum Role {
     Admin,
     User,
@@ -31,6 +31,16 @@ impl From<i32> for Role {
         match id {
             1 => Role::Admin,
             7 => Role::Inactive,
+            _ => Role::User,
+        }
+    }
+}
+
+impl From<String> for Role {
+    fn from(s: String) -> Self {
+        match s.to_lowercase().as_str() {
+            "admin" => Role::Admin,
+            "inactive" => Role::Inactive,
             _ => Role::User,
         }
     }
@@ -74,6 +84,7 @@ impl From<i32> for PrivacyLevel {
     }
 }
 
+#[derive(Clone)]
 pub struct User {
     pub id: i32,
     pub username: String,
@@ -145,6 +156,24 @@ pub struct InsertUserData {
     #[serde(rename = "fullName")]
     pub full_name: String,
     pub email: String,
+}
+
+pub async fn get_all_users(db: &DatabaseConnection) -> Result<Vec<User>> {
+    let cutoff = Utc::now() - Duration::minutes(15);
+
+    let result = Rvperson::find()
+        .find_also_related(TempPassword)
+        .filter(
+            Condition::any()
+                .add(temppassword::Column::CreatedAt.gte(cutoff))
+                .add(temppassword::Column::Userid.is_null()),
+        )
+        .all(db)
+        .await?;
+
+    let users = result.iter().map(|u| User::from(u.to_owned())).collect();
+
+    Ok(users)
 }
 
 pub async fn find_user_by_id(user_id: i32, db: &DatabaseConnection) -> Result<User> {
