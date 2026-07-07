@@ -59,7 +59,7 @@ impl From<ProductRow> for Product {
     }
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, FromQueryResult)]
 pub struct PurchaseEvent {
     pub id: i32,
     pub time: DateTime<Utc>,

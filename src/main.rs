@@ -9,5 +9,5 @@ mod state;
 #[tokio::main]
 async fn main() {
     let (app, listener) = app::create_app().await;
-    app::serve(app, listener);
+    app::serve(app, listener).await;
 }

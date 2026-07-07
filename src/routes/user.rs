@@ -122,7 +122,7 @@ impl From<RfidChangeRequest> for UpdateUserData {
 }
 
 #[derive(Deserialize)]
-struct PasswordChangeRequest {
+pub struct PasswordChangeRequest {
     password: String,
 }
 
