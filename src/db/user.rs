@@ -250,6 +250,32 @@ pub async fn find_user_by_email(email: &str, db: &DatabaseConnection) -> Result<
     Ok(result.into())
 }
 
+pub async fn find_user_by_fullname(fullname: &str, db: &DatabaseConnection) -> Result<User> {
+    let cutoff = Utc::now() - Duration::minutes(15);
+
+    let result = Rvperson::find()
+        .find_also_related(TempPassword)
+        .filter(
+            Condition::all()
+                .add(rvperson::Column::Realname.eq(fullname))
+                .add(
+                    Condition::any()
+                        .add(temppassword::Column::CreatedAt.gte(cutoff))
+                        .add(temppassword::Column::Userid.is_null()),
+                ),
+        )
+        .one(db)
+        .await?
+        .ok_or_else(|| {
+            AppError::Internal(anyhow::format_err!(
+                "Cannot find user by fullname {} from database",
+                fullname
+            ))
+        })?;
+
+    Ok(result.into())
+}
+
 pub async fn insert_user(user: InsertUserData, db: &DatabaseConnection) -> Result<User> {
     let now = Utc::now();
     let hash = bcrypt::hash(user.password, 11)?;

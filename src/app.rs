@@ -15,6 +15,7 @@ pub async fn build_router(state: AppState) -> Router {
         .nest("/api/v1/categories", admin::category::routes())
         .nest("/api/v1/preferences", admin::preference::routes())
         .nest("/api/v1/users", admin::users::routes())
+        .nest("/api/v1/utils", admin::utils::routes())
         .route_layer(middleware::from_fn_with_state(
             state.clone(),
             |state, req, next| require_role(state, Role::Admin, req, next),
