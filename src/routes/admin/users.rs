@@ -10,12 +10,17 @@ use serde::{Deserialize, Serialize};
 use crate::{
     db::{
         self,
-        history::{DepositHistoryData, PurchaseHistoryData},
         user::{UpdateUserData, User},
     },
     error::AppError,
     middleware::auth::AuthUser,
-    routes::user::{PasswordChangeRequest, UserResponse},
+    routes::{
+        history::{
+            deposit::{DepositHistoryRecordResponse, DepositHistoryResponse},
+            purchase::{PurchaseHistoryRecordResponse, PurchaseHistoryResponse},
+        },
+        user::{PasswordChangeRequest, UserResponse},
+    },
     state::AppState,
 };
 
@@ -44,26 +49,6 @@ struct UsersResponse {
     users: Vec<UserResponse>,
 }
 
-#[derive(Serialize)]
-struct PurchasesResponse {
-    purchases: Vec<PurchaseHistoryData>,
-}
-
-#[derive(Serialize)]
-struct PurchaseResponse {
-    purchase: PurchaseHistoryData,
-}
-
-#[derive(Serialize)]
-struct DepositHistoryResponse {
-    deposits: Vec<DepositHistoryData>,
-}
-
-#[derive(Serialize)]
-struct DepositHistoryRecordResponse {
-    deposit: DepositHistoryData,
-}
-
 pub fn routes() -> Router<AppState> {
     Router::new()
         .route("/", get(get_users))
@@ -76,10 +61,7 @@ pub fn routes() -> Router<AppState> {
             "/{user_id}/purchaseHistory/{purchase_id}",
             get(find_users_purchase_history_with_id),
         )
-        .route(
-            "/{user_id}/depositHistory",
-            get(find_users_deposit_history),
-        )
+        .route("/{user_id}/depositHistory", get(find_users_deposit_history))
         .route(
             "/{user_id}/depositHistory/{deposit_id}",
             get(find_users_deposit_history_with_id),
@@ -130,7 +112,7 @@ async fn find_users_purchase_history(
     Path(user_id): Path<i32>,
 ) -> impl IntoResponse {
     match db::history::find_purchase_history_by_user_id(user_id, &state.database).await {
-        Ok(purchases) => Ok(Json(PurchasesResponse { purchases })),
+        Ok(purchases) => Ok(Json(PurchaseHistoryResponse { purchases })),
         Err(_) => Err(AppError::NotFound(
             "Purchase user do not have purchases".to_string(),
         )),
@@ -149,7 +131,7 @@ async fn find_users_purchase_history_with_id(
     )
     .await
     {
-        Ok(purchase) => Ok(Json(PurchaseResponse { purchase })),
+        Ok(purchase) => Ok(Json(PurchaseHistoryRecordResponse { purchase })),
         Err(_) => Err(AppError::NotFound(
             "User do not have purchase that purchase".to_string(),
         )),
@@ -173,7 +155,13 @@ async fn find_users_deposit_history_with_id(
     Path(user_id): Path<i32>,
     Path(deposit_id): Path<i32>,
 ) -> impl IntoResponse {
-    match db::history::find_deposit_history_by_user_id_and_deposit_id(user_id, deposit_id, &state.database).await {
+    match db::history::find_deposit_history_by_user_id_and_deposit_id(
+        user_id,
+        deposit_id,
+        &state.database,
+    )
+    .await
+    {
         Ok(deposit) => Ok(Json(DepositHistoryRecordResponse { deposit })),
         Err(_) => Err(AppError::NotFound(
             "User do not have deposited money".to_string(),
@@ -198,7 +186,7 @@ async fn change_user_password(
         auth.user_id,
         user.username
     );
-    
+
     StatusCode::NO_CONTENT.into_response()
 }
 
@@ -221,5 +209,7 @@ async fn change_user_role(
         user.role
     );
 
-    Ok(Json(RoleChangeRequest { role: format!("{:?}", user.role)}))
+    Ok(Json(RoleChangeRequest {
+        role: format!("{:?}", user.role),
+    }))
 }
