@@ -5,16 +5,17 @@ use crate::{
         entities::{
             personhist,
             prelude::{Personhist, Rvperson, TempPassword},
-            rvperson, temppassword,
+            rvperson, saldohistory, temppassword,
         },
     },
     error::{AppError, Result},
 };
+use anyhow::anyhow;
 use bcrypt;
 use chrono::{Duration, Utc};
 use sea_orm::{
     ActiveModelTrait, ActiveValue::Set, ColumnTrait, Condition, DatabaseConnection, EntityTrait,
-    FromQueryResult, QueryFilter, QueryOrder, QuerySelect,
+    FromQueryResult, QueryFilter, QueryOrder, QuerySelect, TransactionTrait,
 };
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
@@ -156,6 +157,15 @@ pub struct InsertUserData {
     #[serde(rename = "fullName")]
     pub full_name: String,
     pub email: String,
+}
+
+#[derive(Serialize)]
+pub struct Deposit {
+    pub deposit_id: i32,
+    pub time: chrono::DateTime<Utc>,
+    pub amount: i32,
+    #[serde(rename = "balanceAfter")]
+    pub balance_after: i32,
 }
 
 pub async fn get_all_users(db: &DatabaseConnection) -> Result<Vec<User>> {
@@ -470,4 +480,68 @@ pub async fn leaderboard(db: &DatabaseConnection) -> Result<Vec<Leaderboard>> {
         .await?;
 
     Ok(rows)
+}
+
+pub async fn deposit(
+    user_id: i32,
+    amount: i32,
+    deposit_type: &str,
+    db: &DatabaseConnection,
+) -> Result<Deposit> {
+    let trx = db.begin().await?;
+    let now = Utc::now();
+
+    let user = Rvperson::find()
+        .filter(rvperson::Column::Userid.eq(user_id))
+        .one(&trx)
+        .await?
+        .ok_or_else(|| {
+            AppError::Internal(anyhow!(format!("User not found in depositing money",)))
+        })?;
+
+    let new_saldo = user.saldo + amount;
+
+    let mut active_user: rvperson::ActiveModel = user.into();
+    active_user.saldo = Set(new_saldo);
+    let updated_user = active_user.update(&trx).await?;
+
+    let saldo_history = saldohistory::ActiveModel {
+        userid: Set(user_id),
+        time: Set(now.into()),
+        saldo: Set(Some(updated_user.saldo)),
+        difference: Set(amount),
+        ..Default::default()
+    };
+
+    let inserted_saldo_history = saldo_history.insert(&trx).await?;
+
+    let action_id = match deposit_type {
+        "bank" => Actions::DepositedMoneyBankTransfer,
+        "cash" => Actions::DepositedMoneyCash,
+        _ => {
+            return Err(AppError::Internal(anyhow!(format!(
+                "Unknown deposit type: {:?}",
+                deposit_type
+            ))));
+        }
+    };
+
+    let person_history = personhist::ActiveModel {
+        time: Set(now.into()),
+        actionid: Set(action_id.into()),
+        userid1: Set(user_id),
+        userid2: Set(user_id),
+        saldhistid: Set(Some(inserted_saldo_history.saldhistid)),
+        ..Default::default()
+    };
+    let inserted_user_history = person_history.insert(&trx).await?;
+
+    trx.commit().await?;
+
+    Ok(Deposit {
+        deposit_id: inserted_user_history.pershistid,
+        time: now,
+        amount,
+        balance_after: updated_user.saldo,
+    })
 }

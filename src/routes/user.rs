@@ -10,7 +10,7 @@ use serde::{Deserialize, Serialize};
 use crate::{
     db::{
         self,
-        user::{UpdateUserData, User},
+        user::{Deposit, UpdateUserData, User},
     },
     error::AppError,
     middleware::auth::AuthUser,
@@ -141,14 +141,29 @@ impl From<PasswordChangeRequest> for UpdateUserData {
     }
 }
 
+#[derive(Deserialize)]
+pub struct DepositRequest {
+    amount: i32,
+    #[serde(rename = "type")]
+    deposit_type: String,
+}
+
+#[derive(Serialize)]
+pub struct DepositResponse {
+    #[serde(rename = "accountBalance")]
+    balance: i32,
+    deposit: Deposit,
+}
+
 pub fn public_routes() -> Router<AppState> {
     Router::new().route("/user_exists", post(user_exists))
 }
 
 pub fn protected_routes() -> Router<AppState> {
     Router::new()
-        .route("/user", get(get_user))
+        .route("/", get(get_user))
         .route("/", patch(update_user))
+        .route("/deposit", post(deposit))
         .route("/changePrivacylevel", post(change_privacylevel))
         .route("/changeRfid", post(change_rfid))
         .route("/changePassword", post(change_password))
@@ -223,6 +238,35 @@ async fn update_user(
         };
 
     response
+}
+
+async fn deposit(
+    State(state): State<AppState>,
+    Extension(auth): Extension<AuthUser>,
+    body: Json<DepositRequest>,
+) -> impl IntoResponse {
+    let deposit = match db::user::deposit(
+        auth.user_id,
+        body.amount,
+        &body.deposit_type,
+        &state.database,
+    )
+    .await
+    {
+        Ok(d) => d,
+        Err(e) => return Err(e),
+    };
+
+    tracing::info!(
+        "User with id {} deposited {} cents",
+        auth.user_id,
+        deposit.amount
+    );
+
+    Ok(Json(DepositResponse {
+        balance: deposit.balance_after,
+        deposit,
+    }))
 }
 
 async fn change_privacylevel(
