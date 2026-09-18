@@ -8,6 +8,8 @@ pub struct AppConfig {
     pub jwt_expiry: i64,
     pub rv_terminal_secret: String,
     pub rfid_salt: [u8; 16],
+    pub smtp_host: String,
+    pub smtp_port: u16,
 }
 
 impl AppConfig {
@@ -36,6 +38,11 @@ impl AppConfig {
                     buf
                 })
                 .unwrap_or([0u8; 16]),
+            smtp_host: std::env::var("SMTP_HOST").unwrap_or_else(|_| "localhost".to_string()),
+            smtp_port: std::env::var("SMTP_PORT")
+                .ok()
+                .and_then(|p| p.parse().ok())
+                .unwrap_or(25),
         }
     }
 }
