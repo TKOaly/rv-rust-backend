@@ -9,7 +9,11 @@ pub fn send_temp_password(
     temp_password: &str,
     mailer: &SmtpTransport,
 ) -> Result<Response> {
-    let first_name = user.full_name.split_whitespace().next()?;
+    let first_name = user
+        .full_name
+        .split_whitespace()
+        .next()
+        .unwrap_or("No name");
 
     let data = serde_json::json!({
         "name": first_name,
@@ -17,10 +21,10 @@ pub fn send_temp_password(
         "temp_password": temp_password
     });
 
-    let texts_template_path = Path::new("templates/temp_password.txt");
+    let text_template_path = Path::new("templates/temp_password.txt");
     let html_template_path = Path::new("templates/temp_password.html");
 
-    let text_body = render_template(html_template_path, &data)?;
+    let text_body = render_template(text_template_path, &data)?;
     let html_body = render_template(html_template_path, &data)?;
 
     let email = Message::builder()
