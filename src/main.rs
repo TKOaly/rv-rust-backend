@@ -1,6 +1,7 @@
 mod app;
 pub mod config;
 pub mod db;
+pub mod email;
 mod error;
 pub mod middleware;
 mod routes;
