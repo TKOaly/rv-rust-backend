@@ -1,8 +1,11 @@
 use crate::{config::AppConfig, db::user::User, error::Result};
+use chrono::Duration;
 use lettre::{
-    Message, SmtpTransport, Transport, message::MultiPart, transport::smtp::response::Response,
+    Message, SmtpTransport, Transport,
+    message::MultiPart,
+    transport::smtp::{PoolConfig, response::Response},
 };
-use std::{fs, path::Path, time::Duration};
+use std::{fs, path::Path};
 
 pub fn send_temp_password(
     user: &User,
@@ -58,26 +61,35 @@ pub fn create_smtp_connection(config: &AppConfig) -> SmtpTransport {
 
     let mailer = SmtpTransport::relay(&config.smtp_host)
         .expect("build SmtpTransport::relay")
-        .timeout(Some(Duration::from_secs(10)))
+        .timeout(Some(Duration::seconds(10).to_std().expect("valid timeout")))
+        .pool_config(
+            PoolConfig::new()
+                .max_size(5)
+                .idle_timeout(Duration::seconds(60).to_std().expect("valid idle timeout")),
+        )
         .build();
 
     match mailer.test_connection() {
         Ok(true) => {
             tracing::info!(
-                "Successfully connected to {} via a TLS wrapped connection (SmtpTransport::relay). This is the fastest option available for connecting to an SMTP server",
+                "Successfully connected to {} via a TLS wrapped connection",
                 config.smtp_host
             );
         }
         Ok(false) => {
             tracing::error!(
-                "Couldn't connect to {} via a TLS wrapped connection. No more information is available",
+                "Couldn't connect to {} via a TLS wrapped connection",
                 config.smtp_host
             );
         }
         Err(err) => {
-            tracing::error!(err = %err, "Couldn't connect to {} via a TLS wrapped connection", config.smtp_host);
+            tracing::error!(
+                err = %err,
+                "Couldn't connect to {} via a TLS wrapped connection",
+                config.smtp_host
+            );
         }
     }
 
-    return mailer;
+    mailer
 }
