@@ -12,6 +12,7 @@ use crate::{
 };
 use bcrypt;
 use chrono::{Duration, Utc};
+use rand::RngExt;
 use sea_orm::{
     ActiveModelTrait, ActiveValue::Set, ColumnTrait, Condition, DatabaseConnection, EntityTrait,
     FromQueryResult, QueryFilter, QueryOrder, QuerySelect,
@@ -374,6 +375,25 @@ async fn migrate_rfid_hash(
         }
         None => Ok(None),
     }
+}
+
+pub async fn create_temp_password(user_id: i32, db: &DatabaseConnection) -> Result<String> {
+    let now = Utc::now();
+
+    let mut rng = rand::rng();
+    let bytes: [u8; 5] = rng.random();
+    let temp_password = hex::encode(bytes);
+    let hash = bcrypt::hash(&temp_password, 11)?;
+
+    let insert_temp_password = temppassword::ActiveModel {
+        userid: Set(user_id),
+        temp_password: Set(hash),
+        created_at: Set(now.into()),
+    };
+
+     let _ = TempPassword::insert(insert_temp_password).exec(db).await?;
+
+    Ok(temp_password)
 }
 
 pub async fn find_by_rfid(
