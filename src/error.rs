@@ -81,6 +81,12 @@ impl IntoResponse for AppError {
     }
 }
 
+impl From<std::io::Error> for AppError {
+    fn from(error: std::io::Error) -> Self {
+        AppError::Internal(anyhow::anyhow!(error))
+    }
+}
+
 impl From<jsonwebtoken::errors::Error> for AppError {
     fn from(error: jsonwebtoken::errors::Error) -> Self {
         AppError::Internal(anyhow::anyhow!(error))
@@ -107,6 +113,30 @@ impl From<bcrypt::BcryptError> for AppError {
 
 impl From<hex::FromHexError> for AppError {
     fn from(error: hex::FromHexError) -> Self {
+        AppError::Internal(anyhow::anyhow!(error))
+    }
+}
+
+impl From<lettre::error::Error> for AppError {
+    fn from(error: lettre::error::Error) -> Self {
+        AppError::Internal(anyhow::anyhow!(error))
+    }
+}
+
+impl From<lettre::address::AddressError> for AppError {
+    fn from(error: lettre::address::AddressError) -> Self {
+        AppError::Internal(anyhow::anyhow!(error))
+    }
+}
+
+impl From<lettre::transport::smtp::Error> for AppError {
+    fn from(error: lettre::transport::smtp::Error) -> Self {
+        AppError::Internal(anyhow::anyhow!(error))
+    }
+}
+
+impl From<minijinja::Error> for AppError {
+    fn from(error: minijinja::Error) -> Self {
         AppError::Internal(anyhow::anyhow!(error))
     }
 }
