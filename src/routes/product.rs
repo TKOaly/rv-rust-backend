@@ -73,7 +73,7 @@ async fn search(
     }
 }
 
-async fn get_products(
+pub async fn get_products(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthUser>,
 ) -> impl IntoResponse {
@@ -86,7 +86,7 @@ async fn get_products(
     }
 }
 
-async fn get_product_by_barcode(
+pub async fn get_product_by_barcode(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthUser>,
     Path(barcode): Path<String>,

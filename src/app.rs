@@ -12,6 +12,7 @@ use tracing_subscriber::{EnvFilter, fmt};
 
 pub async fn build_router(state: AppState) -> Router {
     let rv_terminal_admin = Router::new()
+        .nest("/api/v1/admin/products", admin::product::routes())
         .nest("/api/v1/admin/categories", admin::category::routes())
         .nest("/api/v1/admin/preferences", admin::preference::routes())
         .nest("/api/v1/admin/users", admin::users::routes())
