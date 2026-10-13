@@ -380,8 +380,7 @@ async fn migrate_rfid_hash(
 pub async fn create_temp_password(user_id: i32, db: &DatabaseConnection) -> Result<String> {
     let now = Utc::now();
 
-    let mut rng = rand::rng();
-    let bytes: [u8; 5] = rng.random();
+    let bytes: [u8; 5] = rand::rng().random();
     let temp_password = hex::encode(bytes);
     let hash = bcrypt::hash(&temp_password, 11)?;
 
@@ -391,7 +390,7 @@ pub async fn create_temp_password(user_id: i32, db: &DatabaseConnection) -> Resu
         created_at: Set(now.into()),
     };
 
-     let _ = TempPassword::insert(insert_temp_password).exec(db).await?;
+    let _ = TempPassword::insert(insert_temp_password).exec(db).await?;
 
     Ok(temp_password)
 }

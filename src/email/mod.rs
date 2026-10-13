@@ -1,16 +1,16 @@
 use crate::{config::AppConfig, db::user::User, error::Result};
 use chrono::Duration;
 use lettre::{
-    Message, SmtpTransport, Transport,
+    AsyncSmtpTransport, AsyncTransport, Message, Tokio1Executor,
     message::MultiPart,
     transport::smtp::{PoolConfig, response::Response},
 };
 use std::{fs, path::Path};
 
-pub fn send_temp_password(
+pub async fn send_temp_password(
     user: &User,
     temp_password: &str,
-    mailer: &SmtpTransport,
+    mailer: &AsyncSmtpTransport<Tokio1Executor>,
 ) -> Result<Response> {
     let first_name = user
         .full_name
@@ -36,7 +36,7 @@ pub fn send_temp_password(
         .subject("Temporary RV password")
         .multipart(MultiPart::alternative_plain_html(text_body, html_body))?;
 
-    let response = mailer.send(&email)?;
+    let response = mailer.send(email).await?;
 
     return Ok(response);
 }
@@ -53,15 +53,15 @@ fn render_template(template_path: &Path, data: &serde_json::Value) -> Result<Str
     Ok(jinja_template.render(data)?)
 }
 
-pub fn create_smtp_connection(config: &AppConfig) -> SmtpTransport {
+pub async fn create_smtp_connection(config: &AppConfig) -> AsyncSmtpTransport<Tokio1Executor> {
     tracing::info!(
         "Trying to establish a TLS wrapped connection to {}",
         config.smtp_host
     );
 
-    let mailer = SmtpTransport::relay(&config.smtp_host)
-        .expect("build SmtpTransport::relay")
-        .timeout(Some(Duration::seconds(10).to_std().expect("valid timeout")))
+    let mailer = AsyncSmtpTransport::<Tokio1Executor>::relay(&config.smtp_host)
+        .unwrap()
+        .timeout(Some(Duration::seconds(10).to_std().unwrap()))
         .pool_config(
             PoolConfig::new()
                 .max_size(5)
@@ -69,7 +69,7 @@ pub fn create_smtp_connection(config: &AppConfig) -> SmtpTransport {
         )
         .build();
 
-    match mailer.test_connection() {
+    match mailer.test_connection().await {
         Ok(true) => {
             tracing::info!(
                 "Successfully connected to {} via a TLS wrapped connection",

@@ -3,7 +3,7 @@ use crate::db::user::Role;
 use crate::middleware::auth::{
     jwt_middleware, require_active_account, require_role, require_rv_terminal,
 };
-use crate::routes::{admin, auth, category, history, product, register, statistics, user};
+use crate::routes::{admin, auth, category, email, history, product, register, statistics, user};
 use crate::state::AppState;
 
 use axum::{Router, middleware};
@@ -43,6 +43,7 @@ pub async fn build_router(state: AppState) -> Router {
         .nest("/api/v1/user/purchaseHistory", history::purchase::routes())
         .nest("/api/v1/products", product::routes())
         .nest("/api/v1/categories", category::routes())
+        .nest("/api/v1/email", email::routes())
         .route_layer(middleware::from_fn_with_state(
             state.clone(),
             require_active_account,
